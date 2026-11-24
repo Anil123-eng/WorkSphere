@@ -1,9 +1,14 @@
 
 import request from "supertest";
 import app from "../app";
+import { pool } from "../db";
 
 describe("WorkSphere API", () => {
-  let projectId: number;
+  let projectId: string;
+
+  afterAll(async () => {
+    await pool.end();
+  });
 
   test("GET /api/health - should return API health status", async () => {
     const response = await request(app).get("/api/health");
@@ -22,6 +27,7 @@ describe("WorkSphere API", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.name).toBe("Automated Test Project");
+    expect(response.body.data.organization_id).toBe("1");
 
     projectId = response.body.data.id;
   });

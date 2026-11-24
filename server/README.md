@@ -2,16 +2,35 @@
 
 ## Overview
 
-This folder contains the Express.js REST API for the WorkSphere project management platform.
+This folder contains the Express.js REST API for the WorkSphere multi-tenant project management platform.
+
+The API uses PostgreSQL for persistent project storage.
 
 ## Technology Stack
 
 - Node.js
 - Express.js
 - TypeScript
+- PostgreSQL
+- `pg` PostgreSQL driver
 - CORS
 - Jest
 - Supertest
+
+## Database Configuration
+
+The API uses environment variables from the root `.env` file.
+
+```env
+PORT=5000
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=worksphere_db
+DB_USER=postgres
+DB_PASSWORD=your_postgres_password
+```
+
+Do not commit the actual `.env` file.
 
 ## Start the API Server
 
@@ -23,14 +42,14 @@ npm run server
 
 The API runs at:
 
-`http://localhost:5000`
+http://localhost:5000
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/health` | Check API status |
-| GET | `/api/projects` | Retrieve all projects |
+| GET | `/api/projects` | Retrieve organization projects |
 | GET | `/api/projects/:id` | Retrieve a project |
 | POST | `/api/projects` | Create a project |
 | PUT | `/api/projects/:id` | Update a project |
@@ -60,29 +79,4 @@ A successful request returns HTTP `201 Created`.
 }
 ```
 
-A successful request returns HTTP `200 OK`.
-
-## Validation and Error Handling
-
-- Project names are required.
-- Empty or invalid project IDs return HTTP `400`.
-- Projects that do not exist return HTTP `404`.
-- Unknown API endpoints return HTTP `404`.
-- Unexpected server errors are handled by centralized error middleware.
-
-## Run Automated Tests
-
-From the project root, run:
-
-```bash
-npm test
-```
-
-The API tests use Jest and Supertest.
-
-## Current Implementation Limitations
-
-- Project data is currently stored in memory.
-- Data is lost when the server restarts.
-- PostgreSQL persistence will be implemented in a later assessment.
-- Authentication, role-based access control, and tenant-level data isolation are not implemented yet.
+A successful request returns HTTP `200
