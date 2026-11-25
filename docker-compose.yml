@@ -1,19 +1,24 @@
-﻿services:
+﻿
+services:
   postgres:
     image: postgres:16-alpine
     container_name: worksphere-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: worksphere_db
-      POSTGRES_USER: postgres
+      POSTGRES_DB: ${DB_NAME:-worksphere_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-worksphere_dev_password}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d worksphere_db"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,6 +31,8 @@
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -43,10 +50,10 @@
       PORT: 5000
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: worksphere_db
-      DB_USER: postgres
+      DB_NAME: ${DB_NAME:-worksphere_db}
+      DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-worksphere_dev_password}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       JWT_SECRET: ${JWT_SECRET:-replace-this-development-secret}
       ACCESS_TOKEN_EXPIRES_IN: ${ACCESS_TOKEN_EXPIRES_IN:-15m}
       REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-7}
@@ -60,11 +67,24 @@
       S3_ENDPOINT: ${S3_ENDPOINT:-}
     ports:
       - "5000:5000"
+    networks:
+      - backend
+      - app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   worker:
     build:
@@ -77,15 +97,27 @@
       NODE_ENV: production
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: worksphere_db
-      DB_USER: postgres
+      DB_NAME: ${DB_NAME:-worksphere_db}
+      DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-worksphere_dev_password}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    networks:
+      - backend
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "const fs=require('fs');try{const t=Number(fs.readFileSync('/tmp/worksphere-worker-health','utf8'));process.exit(Date.now()-t<30000?0:1)}catch(e){process.exit(1)}"
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   analytics:
     build:
@@ -95,6 +127,19 @@
     restart: unless-stopped
     ports:
       - "8000:8000"
+    networks:
+      - backend
+      - app
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   frontend:
     build:
@@ -104,10 +149,31 @@
     restart: unless-stopped
     ports:
       - "3000:3000"
+    networks:
+      - app
     depends_on:
-      - api
-      - analytics
+      api:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
+  app:
+    driver: bridge
