@@ -1,13 +1,60 @@
 
 import request from "supertest";
+import { randomUUID } from "crypto";
 import app from "../app";
 import { pool } from "../db";
 
-describe("WorkSphere API", () => {
+describe("WorkSphere Project API", () => {
   let projectId: string;
+  let userId: number;
+  let organizationId: number;
+  let accessToken: string;
+
+  const testEmail = `worksphere-project-${randomUUID()}@example.com`;
+
+  const authenticatedRequest = () => ({
+    Authorization: `Bearer ${accessToken}`,
+  });
+
+  beforeAll(async () => {
+    const registration = await request(app)
+      .post("/api/auth/register")
+      .send({
+        name: "Project Test User",
+        email: testEmail,
+        password: "TestPassword@123",
+        organizationName: "Project Test Organization",
+      });
+
+    if (registration.status !== 201) {
+      throw new Error(
+        `Test registration failed: ${JSON.stringify(registration.body)}`
+      );
+    }
+
+    accessToken = registration.body.data.accessToken;
+    userId = Number(registration.body.data.user.id);
+    organizationId = Number(registration.body.data.organization.id);
+  });
 
   afterAll(async () => {
-    await pool.end();
+    try {
+      if (organizationId) {
+        await pool.query(
+          "DELETE FROM organizations WHERE id = $1",
+          [organizationId]
+        );
+      }
+
+      if (userId) {
+        await pool.query(
+          "DELETE FROM users WHERE id = $1",
+          [userId]
+        );
+      }
+    } finally {
+      await pool.end();
+    }
   });
 
   test("GET /api/health - should return API health status", async () => {
@@ -20,6 +67,7 @@ describe("WorkSphere API", () => {
   test("POST /api/projects - should create a project", async () => {
     const response = await request(app)
       .post("/api/projects")
+      .set(authenticatedRequest())
       .send({
         name: "Automated Test Project",
         description: "Testing project creation",
@@ -27,15 +75,15 @@ describe("WorkSphere API", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.name).toBe("Automated Test Project");
-    expect(response.body.data.organization_id).toBe("1");
+    expect(Number(response.body.data.organization_id)).toBe(organizationId);
 
     projectId = response.body.data.id;
   });
 
   test("GET /api/projects/:id - should retrieve a project", async () => {
-    const response = await request(app).get(
-      `/api/projects/${projectId}`
-    );
+    const response = await request(app)
+      .get(`/api/projects/${projectId}`)
+      .set(authenticatedRequest());
 
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe(projectId);
@@ -44,6 +92,7 @@ describe("WorkSphere API", () => {
   test("PUT /api/projects/:id - should update a project", async () => {
     const response = await request(app)
       .put(`/api/projects/${projectId}`)
+      .set(authenticatedRequest())
       .send({
         name: "Updated Test Project",
         description: "Updated description",
@@ -56,6 +105,7 @@ describe("WorkSphere API", () => {
   test("POST /api/projects - should reject a missing project name", async () => {
     const response = await request(app)
       .post("/api/projects")
+      .set(authenticatedRequest())
       .send({
         description: "Missing name test",
       });
@@ -65,23 +115,27 @@ describe("WorkSphere API", () => {
   });
 
   test("GET /api/projects/invalid - should reject an invalid ID", async () => {
-    const response = await request(app).get("/api/projects/invalid");
+    const response = await request(app)
+      .get("/api/projects/invalid")
+      .set(authenticatedRequest());
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe("Invalid project ID");
   });
 
   test("GET /api/projects/:id - should return 404 for a missing project", async () => {
-    const response = await request(app).get("/api/projects/999999999");
+    const response = await request(app)
+      .get("/api/projects/999999999")
+      .set(authenticatedRequest());
 
     expect(response.status).toBe(404);
     expect(response.body.message).toBe("Project not found");
   });
 
   test("DELETE /api/projects/:id - should delete a project", async () => {
-    const response = await request(app).delete(
-      `/api/projects/${projectId}`
-    );
+    const response = await request(app)
+      .delete(`/api/projects/${projectId}`)
+      .set(authenticatedRequest());
 
     expect(response.status).toBe(200);
     expect(response.body.message).toBe("Project deleted successfully");

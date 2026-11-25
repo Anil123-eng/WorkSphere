@@ -3,13 +3,15 @@ import express from "express";
 import cors from "cors";
 import projectRoutes from "./routes/projectRoutes";
 import { errorHandler } from "./middleware/errorHandler";
+import authRoutes from "./routes/authRoutes";
 
 const app = express();
 
 // Global middleware
 app.use(cors());
 app.use(express.json());
-
+// Authentication routes
+app.use("/api/auth", authRoutes);
 // Health check
 app.get("/api/health", (_req, res) => {
   res.status(200).json({

@@ -1,19 +1,26 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db";
+import { authenticateToken } from "../middleware/authMiddleware";
+import { authorizeRoles } from "../middleware/roleMiddleware";
 
 const router = Router();
 
-// GET all projects for the demo organization
-router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
+// Require authentication for all project endpoints
+router.use(authenticateToken);
+
+// GET all projects for the authenticated user's organization
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = req.user!.organizationId;
+
     const result = await pool.query(
       `SELECT id, organization_id, name, description, status,
               created_at, updated_at
        FROM projects
        WHERE organization_id = $1
        ORDER BY id`,
-      [1]
+      [organizationId]
     );
 
     res.status(200).json({
@@ -25,10 +32,11 @@ router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// GET project by ID
+// GET project by ID within the authenticated user's organization
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = Number(req.params.id);
+    const organizationId = req.user!.organizationId;
 
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({
@@ -43,7 +51,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
               created_at, updated_at
        FROM projects
        WHERE id = $1 AND organization_id = $2`,
-      [id, 1]
+      [id, organizationId]
     );
 
     if (result.rows.length === 0) {
@@ -64,127 +72,146 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // POST create project
-router.post("/", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { name, description } = req.body;
+router.post(
+  "/",
+  authorizeRoles("owner", "project_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name, description } = req.body;
+      const organizationId = req.user!.organizationId;
 
-    if (typeof name !== "string" || !name.trim()) {
-      res.status(400).json({
-        success: false,
-        message: "Project name is required",
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({
+          success: false,
+          message: "Project name is required",
+        });
+        return;
+      }
+
+      const result = await pool.query(
+        `INSERT INTO projects (organization_id, name, description)
+         VALUES ($1, $2, $3)
+         RETURNING id, organization_id, name, description, status,
+                   created_at, updated_at`,
+        [
+          organizationId,
+          name.trim(),
+          typeof description === "string" ? description.trim() : "",
+        ]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Project created successfully",
+        data: result.rows[0],
       });
-      return;
+    } catch (error) {
+      next(error);
     }
-
-    const result = await pool.query(
-      `INSERT INTO projects (organization_id, name, description)
-       VALUES ($1, $2, $3)
-       RETURNING id, organization_id, name, description, status,
-                 created_at, updated_at`,
-      [1, name.trim(), typeof description === "string" ? description.trim() : ""]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: "Project created successfully",
-      data: result.rows[0],
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 // PUT update project
-router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const id = Number(req.params.id);
-    const { name, description } = req.body;
+router.put(
+  "/:id",
+  authorizeRoles("owner", "project_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = Number(req.params.id);
+      const { name, description } = req.body;
+      const organizationId = req.user!.organizationId;
 
-    if (!Number.isInteger(id) || id <= 0) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid project ID",
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid project ID",
+        });
+        return;
+      }
+
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({
+          success: false,
+          message: "Project name is required",
+        });
+        return;
+      }
+
+      const result = await pool.query(
+        `UPDATE projects
+         SET name = $1,
+             description = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3 AND organization_id = $4
+         RETURNING id, organization_id, name, description, status,
+                   created_at, updated_at`,
+        [
+          name.trim(),
+          typeof description === "string" ? description.trim() : "",
+          id,
+          organizationId,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Project updated successfully",
+        data: result.rows[0],
       });
-      return;
+    } catch (error) {
+      next(error);
     }
-
-    if (typeof name !== "string" || !name.trim()) {
-      res.status(400).json({
-        success: false,
-        message: "Project name is required",
-      });
-      return;
-    }
-
-    const result = await pool.query(
-      `UPDATE projects
-       SET name = $1,
-           description = $2,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3 AND organization_id = $4
-       RETURNING id, organization_id, name, description, status,
-                 created_at, updated_at`,
-      [
-        name.trim(),
-        typeof description === "string" ? description.trim() : "",
-        id,
-        1,
-      ]
-    );
-
-    if (result.rows.length === 0) {
-      res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Project updated successfully",
-      data: result.rows[0],
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 // DELETE project
-router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const id = Number(req.params.id);
+router.delete(
+  "/:id",
+  authorizeRoles("owner"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = Number(req.params.id);
+      const organizationId = req.user!.organizationId;
 
-    if (!Number.isInteger(id) || id <= 0) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid project ID",
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid project ID",
+        });
+        return;
+      }
+
+      const result = await pool.query(
+        `DELETE FROM projects
+         WHERE id = $1 AND organization_id = $2
+         RETURNING id`,
+        [id, organizationId]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: "Project not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Project deleted successfully",
       });
-      return;
+    } catch (error) {
+      next(error);
     }
-
-    const result = await pool.query(
-      `DELETE FROM projects
-       WHERE id = $1 AND organization_id = $2
-       RETURNING id`,
-      [id, 1]
-    );
-
-    if (result.rows.length === 0) {
-      res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Project deleted successfully",
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 export default router;
