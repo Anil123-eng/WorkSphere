@@ -384,3 +384,55 @@ Tested functionality:
 - Background job processing
 - FastAPI analytics health endpoint
 
+### Automated Test Results
+
+Automated tests were executed using Jest.
+
+**Test Summary:**
+- Test Suites: 4 passed, 4 total
+- Tests: 28 passed, 28 total
+- Failed Tests: 0
+- Snapshots: 0
+
+**Test Files:**
+- `server/tests/auth.test.ts` – Authentication tests
+- `server/tests/project.test.ts` – Project tests
+- `server/tests/assessment08.test.ts` – Assessment 08 tests
+- `server/tests/webhook.test.ts` – Webhook tests
+
+**Command Used:**
+```bash
+npm test -- --runInBand
+```
+
+All 28 tests passed successfully.
+
+### Docker Integration Verification
+
+The Docker environment was started successfully using Docker Compose.
+
+**Services verified:**
+- Next.js Frontend
+- Node.js API
+- Python Analytics Service
+- PostgreSQL Database
+- Redis
+- Background Worker
+
+**Verification results:**
+- All six Docker services started successfully.
+- PostgreSQL and Redis health checks passed.
+- API health endpoint returned a successful response.
+- Frontend was accessible at `http://localhost:3000`.
+- Analytics health endpoint returned a healthy status.
+- Background worker successfully processed a task event.
+
+**Docker Commands:**
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f
+docker compose down
+```
+
+**Note:** Docker integration checks were performed manually. Jest automated test results are reported separately above.
