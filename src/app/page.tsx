@@ -27,11 +27,26 @@ const roles = [
 export default function Home() {
   return (
     <main className="min-h-screen bg-gray-100 p-6">
-      <header className="flex items-center justify-between rounded-lg border-b bg-white p-5">
-        <h1 className="text-2xl font-bold text-blue-700">WorkSphere</h1>
-        <span className="text-sm text-gray-600">
-          Project Management Platform
-        </span>
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-lg border-b bg-white p-5">
+        <h1 className="text-2xl font-bold text-blue-700">
+          WorkSphere
+        </h1>
+
+        <nav className="flex items-center gap-5">
+          <Link
+            href="/login"
+            className="text-sm font-semibold text-gray-700 hover:text-blue-600"
+          >
+            Login
+          </Link>
+
+          <Link
+            href="/register"
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Register
+          </Link>
+        </nav>
       </header>
 
       <section className="mx-auto mt-12 max-w-5xl">
