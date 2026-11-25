@@ -8,14 +8,28 @@ import taskRoutes from "./routes/taskRoutes";
 import taskEventRoutes from "./routes/taskEventRoutes";
 
 import { errorHandler } from "./middleware/errorHandler";
+import webhookRoutes from "./routes/webhookRoutes";
+import integrationRoutes from "./routes/integrationRoutes";
+import attachmentRoutes from "./routes/attachmentRoutes";
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buffer) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody =
+        Buffer.from(buffer);
+    },
+  })
+);
 
 // Authentication routes
 app.use("/api/auth", authRoutes);
+
+app.use("/api/webhooks", webhookRoutes);
+app.use("/api/integrations", integrationRoutes);
+app.use("/api/attachments", attachmentRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
