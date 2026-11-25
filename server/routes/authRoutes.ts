@@ -160,6 +160,7 @@ router.post(
   }
 );
 
+
 // Login an existing user
 router.post(
   "/login",
@@ -179,9 +180,12 @@ router.post(
       return;
     }
 
-    const client = await pool.connect();
+    let client: Awaited<ReturnType<typeof pool.connect>> | undefined;
 
     try {
+      // Connect inside try so database connection failures are caught
+      client = await pool.connect();
+
       const userResult = await client.query(
         `SELECT id, name, email, password_hash
          FROM users
@@ -333,7 +337,7 @@ router.post(
         message: "Login failed",
       });
     } finally {
-      client.release();
+      client?.release();
     }
   }
 );
