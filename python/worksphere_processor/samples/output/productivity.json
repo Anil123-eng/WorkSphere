@@ -1,0 +1,14 @@
+{
+  "user_101": {
+    "total_activities": 2,
+    "completed_tasks": 0
+  },
+  "user_102": {
+    "total_activities": 2,
+    "completed_tasks": 2
+  },
+  "user_103": {
+    "total_activities": 1,
+    "completed_tasks": 0
+  }
+}
