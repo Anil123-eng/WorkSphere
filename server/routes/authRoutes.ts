@@ -1,5 +1,7 @@
 
 import { Router, Request, Response } from "express";
+import { PoolClient } from "pg";
+
 import bcrypt from "bcryptjs";
 import { pool } from "../db";
 import {
@@ -10,6 +12,12 @@ import {
 } from "../utils/tokenUtils";
 
 const router = Router();
+
+interface OrganizationMembership {
+  organization_id: number | string;
+  role: string;
+  organization_name: string;
+}
 
 // Register a new organization and its owner
 router.post(
@@ -180,7 +188,7 @@ router.post(
       return;
     }
 
-    let client: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let client: PoolClient | undefined;
 
     try {
       // Connect inside try so database connection failures are caught
@@ -228,7 +236,8 @@ router.post(
         [user.id]
       );
 
-      const memberships = membershipResult.rows;
+      const memberships =
+        membershipResult.rows as OrganizationMembership[];
 
       if (memberships.length === 0) {
         res.status(403).json({

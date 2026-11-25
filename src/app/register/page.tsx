@@ -5,6 +5,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { register } from "@/lib/api";
 
+interface RegisterResponse {
+  success: boolean;
+  message?: string;
+}
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -21,12 +26,12 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const result = await register(
+      const result = (await register(
         name,
         email,
         password,
         organizationName
-      );
+      )) as RegisterResponse;
 
       if (!result.success) {
         throw new Error(result.message || "Registration failed");
