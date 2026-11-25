@@ -110,16 +110,10 @@ Create the database:
 CREATE DATABASE worksphere_db;
 ```
 
-Execute the core schema:
+Initialize all application schemas from the project root:
 
 ```powershell
-psql -U postgres -d worksphere_db -f server/database/schema.sql
-```
-
-Execute the authentication schema:
-
-```powershell
-psql -U postgres -d worksphere_db -f server/database/auth-schema.sql
+node create-db.cjs
 ```
 
 ## Authentication and Authorization

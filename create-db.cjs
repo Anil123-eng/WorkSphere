@@ -21,18 +21,20 @@ async function initializeDatabase() {
     const schemaFiles = [
       path.join(__dirname, "server", "database", "schema.sql"),
       path.join(__dirname, "server", "database", "auth-schema.sql"),
+      path.join(__dirname, "server", "database", "assessment-07-schema.sql"),
+      path.join(__dirname, "server", "database", "assessment-08-schema.sql"),
     ];
     let sql = schemaFiles
       .map((schemaFile) => fs.readFileSync(schemaFile, "utf8"))
       .join("\n");
 
     sql = sql.replace(
-      /CREATE TABLE\s+/gi,
+      /CREATE TABLE\s+(?!IF NOT EXISTS\b)/gi,
       "CREATE TABLE IF NOT EXISTS "
     );
 
     sql = sql.replace(
-      /CREATE INDEX\s+/gi,
+      /CREATE INDEX\s+(?!IF NOT EXISTS\b)/gi,
       "CREATE INDEX IF NOT EXISTS "
     );
 

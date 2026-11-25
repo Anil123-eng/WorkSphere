@@ -15,7 +15,7 @@ Runs on pushes to `master` and `feature/**`, and on pull requests targeting `mas
 The workflow:
 
 - Runs ESLint, TypeScript checking, Jest integration tests, and the Next.js production build.
-- Starts an isolated PostgreSQL 16 service for Jest and initializes both SQL schemas.
+- Starts an isolated PostgreSQL 16 service for Jest and initializes all four application schemas.
 - Runs Python analytics and processor unit tests.
 - Runs `npm audit --audit-level=high` and `pip-audit`.
 - Builds all three Docker images without publishing on pull requests.
@@ -83,10 +83,10 @@ URL-encode special characters in PostgreSQL usernames or passwords when placing 
 npm ci
 node create-db.cjs
 npm run lint
+npm test -- --runInBand
 npm run build
 npx tsc --noEmit
 npx tsc -p tsconfig.server.json --noEmit
-npm test -- --runInBand
 python -m pip install -r python/analytics_service/requirements.txt
 python -m unittest discover -s python/analytics_service/tests -p "test_*.py"
 $env:PYTHONPATH = "python/worksphere_processor"
