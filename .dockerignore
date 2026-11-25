@@ -1,0 +1,17 @@
+
+node_modules
+.next
+dist
+.venv
+venv
+__pycache__
+.pytest_cache
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+coverage
+.DS_Store
+Thumbs.db

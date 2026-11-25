@@ -88,7 +88,7 @@ async function processJob(job: BackgroundJob): Promise<void> {
       timestamp: new Date().toISOString(),
     };
 
-    taskEvents.publish(event);
+    await taskEvents.publish(event);
     return;
   }
 
@@ -159,12 +159,14 @@ export async function processPendingJobs(): Promise<void> {
   }
 }
 
-export function startJobWorker(): void {
+
+export function startJobWorker(): NodeJS.Timeout {
   console.log("WorkSphere background job worker started");
 
   void processPendingJobs();
 
-  setInterval(() => {
+  return setInterval(() => {
     void processPendingJobs();
   }, 3000);
 }
+

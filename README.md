@@ -291,3 +291,96 @@ These features are planned for subsequent development assessments.
 - Assessment 04: Authentication, authorization, refresh-token security, and organization-level project isolation implemented and tested.
 
 WorkSphere is being developed incrementally as part of a hands-on software engineering training project.
+## Docker Deployment
+
+WorkSphere can run locally using Docker Compose. The deployment contains six services.
+
+### Architecture
+
+| Service | Technology | Port | Purpose |
+|---|---|---:|---|
+| Frontend | Next.js | 3000 | User interface |
+| API | Node.js / Express | 5000 | Backend REST API |
+| Worker | Node.js | Internal | Background job processing |
+| Analytics | Python / FastAPI | 8000 | Analytics service |
+| Database | PostgreSQL 16 | 5432 | Persistent application data |
+| Cache / Messaging | Redis 7 | 6379 | Real-time task events |
+
+### Prerequisites
+
+- Docker Desktop
+- Docker Compose
+- Git
+
+### Getting Started
+
+Clone the repository:
+
+```bash
+git clone <your-repository-url>
+cd worksphere-app
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs
+docker compose logs api
+docker compose logs worker
+docker compose logs frontend
+docker compose logs analytics
+docker compose restart
+docker compose down
+docker compose down -v
+### Environment Configuration
+
+Important environment variables:
+
+- `DB_PASSWORD` - PostgreSQL password
+- `JWT_SECRET` - JWT signing secret
+- `ACCESS_TOKEN_EXPIRES_IN` - Access token expiration
+- `REFRESH_TOKEN_EXPIRES_DAYS` - Refresh token expiration
+- `REDIS_URL` - Redis connection URL
+- `RESEND_API_KEY` - Email integration
+- `AWS_REGION` - Object storage configuration
+- `S3_BUCKET` - Object storage bucket
+
+For production, use strong secrets and real service credentials. Never commit `.env` files or production secrets.
+
+### Persistent Storage
+
+Docker Compose uses named volumes:
+
+- `postgres_data` - PostgreSQL database storage
+- `redis_data` - Redis data storage
+
+Database initialization scripts are located in:
+
+`docker/postgres/init/`
+
+They execute when PostgreSQL initializes a new, empty data volume.
+
+### Background Job Processing
+
+WorkSphere uses PostgreSQL to persist background jobs.
+
+The worker:
+1. Polls the background job queue.
+2. Claims pending jobs using PostgreSQL.
+3. Processes task events.
+4. Publishes events to Redis.
+
+The API subscribes to:
+
+`worksphere:task-events`
+
+### Docker Verification
+
+Tested functionality:
+
+- Frontend and API startup
+- PostgreSQL connectivity
+- Redis subscriber connection
+- Organization registration and JWT authentication
+- Project and task creation
+- Background job processing
+- FastAPI analytics health endpoint
+

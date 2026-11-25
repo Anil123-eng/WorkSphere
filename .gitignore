@@ -43,3 +43,6 @@ next-env.d.ts
 
 __pycache__/
 *.py[cod]
+
+# TypeScript build output
+/dist/
