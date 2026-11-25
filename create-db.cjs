@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
 const fs = require("fs");
+const path = require("path");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -10,10 +11,13 @@ const pool = new Pool({
 
 async function initializeDatabase() {
   try {
-    let sql = fs.readFileSync(
-      "server/database/schema.sql",
-      "utf8"
-    );
+    const schemaFiles = [
+      path.join(__dirname, "server", "database", "schema.sql"),
+      path.join(__dirname, "server", "database", "auth-schema.sql"),
+    ];
+    let sql = schemaFiles
+      .map((schemaFile) => fs.readFileSync(schemaFile, "utf8"))
+      .join("\n");
 
     sql = sql.replace(
       /CREATE TABLE\s+/gi,
