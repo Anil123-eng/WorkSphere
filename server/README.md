@@ -22,15 +22,14 @@ The API uses PostgreSQL for persistent project and task storage. It also support
 
 ## Database Configuration
 
-The API uses environment variables from the root `.env` file.
+The API uses `DATABASE_URL` and `JWT_SECRET` from the root `.env` file. Local
+connections use the URL as-is; SSL is enabled automatically for non-local
+database hosts.
 
 ```env
 PORT=5000
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=worksphere_db
-DB_USER=postgres
-DB_PASSWORD=your_postgres_password
+DATABASE_URL=postgresql://postgres:your_postgres_password@localhost:5432/worksphere_db
+JWT_SECRET=replace-with-a-secure-random-secret
 ```
 
 Do not commit the actual `.env` file.

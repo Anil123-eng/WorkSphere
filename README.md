@@ -139,7 +139,7 @@ cd WorkSphere
 ### 2. Install dependencies
 
 ```bash
-npm install
+npm ci
 ```
 
 ### 3. Configure environment variables
@@ -150,13 +150,8 @@ Configure the following variables with your local database credentials and a sec
 
 ```env
 PORT=5000
-
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=worksphere_db
-DB_USER=postgres
-DB_PASSWORD=your_postgres_password
-
+DATABASE_URL=postgresql://postgres:your_postgres_password@localhost:5432/worksphere_db
+NEXT_PUBLIC_API_URL=http://localhost:5000
 JWT_SECRET=your_secure_jwt_secret
 ACCESS_TOKEN_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_DAYS=7
@@ -172,17 +167,11 @@ CREATE DATABASE worksphere_db;
 
 ### 5. Create database tables
 
-Execute the core database schema:
-
 ```bash
-psql -U postgres -d worksphere_db -f server/database/schema.sql
+node create-db.cjs
 ```
 
-Execute the authentication schema:
-
-```bash
-psql -U postgres -d worksphere_db -f server/database/auth-schema.sql
-```
+The initializer loads both the core and authentication schemas. It reads `DATABASE_URL` from the root `.env` file.
 
 ### 6. Start the frontend
 
@@ -263,6 +252,12 @@ Run production build:
 npm run build
 ```
 
+## Assessment 11 CI/CD
+
+GitHub Actions runs quality checks, tests, dependency scans, and Docker builds on feature branches and pull requests. The release workflow publishes GHCR images and deploys staging after successful checks on `master`; production is manually dispatched and gated by GitHub Environment approval.
+
+See [Assessment 11 CI/CD setup](./docs/ASSESSMENT_11.md) for workflow behavior, required environment configuration, deployment setup, and rollback instructions.
+
 ### Current Test Results
 
 - Authentication API: 9 tests passed.
@@ -278,8 +273,7 @@ npm run build
 - Notifications and real-time updates.
 - Analytics and reporting.
 - Background jobs and integrations.
-- Docker and CI/CD configuration.
-- Production deployment and monitoring.
+- Production monitoring and incident response.
 
 These features are planned for subsequent development assessments.
 
@@ -289,6 +283,7 @@ These features are planned for subsequent development assessments.
 - Assessment 02: Express API and project CRUD implemented.
 - Assessment 03: PostgreSQL data model and project persistence implemented.
 - Assessment 04: Authentication, authorization, refresh-token security, and organization-level project isolation implemented and tested.
+- Assessment 11: CI/CD workflows for quality checks, security scans, image publishing, staging deployment, and approval-gated production release.
 
 WorkSphere is being developed incrementally as part of a hands-on software engineering training project.
 ## Docker Deployment

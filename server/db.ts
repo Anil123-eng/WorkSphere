@@ -2,11 +2,16 @@
 import "dotenv/config";
 import { Pool } from "pg";
 
+const databaseUrl = process.env.DATABASE_URL;
+const databaseHost = databaseUrl ? new URL(databaseUrl).hostname : undefined;
+const localHosts = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL
-    ? { rejectUnauthorized: false }
-    : undefined,
+  connectionString: databaseUrl,
+  ssl:
+    databaseHost && !localHosts.has(databaseHost)
+      ? { rejectUnauthorized: false }
+      : undefined,
 });
 
 pool.on("error", (err) => {

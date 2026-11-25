@@ -1,0 +1,94 @@
+name: WorkSphere production release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA from master that passed CI and staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worksphere-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+      - name: Validate release commit
+        env:
+          TARGET_SHA: ${{ inputs.commit_sha }}
+        run: |
+          if ! [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Enter a full 40-character lowercase commit SHA."
+            exit 1
+          fi
+
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/master; then
+            echo "::error::The selected commit is not on master."
+            exit 1
+          fi
+      - name: Trigger Render production deploys
+        env:
+          RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+          TARGET_SHA: ${{ inputs.commit_sha }}
+        run: |
+          for name in RENDER_FRONTEND_DEPLOY_HOOK RENDER_BACKEND_DEPLOY_HOOK; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure the $name secret in the production environment."
+              exit 1
+            fi
+          done
+
+          trigger_deploy() {
+            hook_url="$1"
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --get --data-urlencode "ref=$TARGET_SHA" "$hook_url" || true)"
+            case "$status" in
+              200|202) ;;
+              *) echo "::error::Render deploy hook failed with HTTP $status."; return 1 ;;
+            esac
+          }
+
+          trigger_deploy "$RENDER_BACKEND_DEPLOY_HOOK"
+          trigger_deploy "$RENDER_FRONTEND_DEPLOY_HOOK"
+      - name: Verify production health
+        env:
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: |
+          for name in FRONTEND_URL BACKEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure the $name variable in the production environment."
+              exit 1
+            fi
+          done
+
+          wait_for_http_200() {
+            url="$1"
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$url" || true)"
+              if [ "$status" = "200" ]; then
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::Health check did not return HTTP 200."
+            return 1
+          }
+
+          wait_for_http_200 "${BACKEND_URL%/}/api/health"
+          wait_for_http_200 "${FRONTEND_URL%/}/"

@@ -1,4 +1,4 @@
-name: WorkSphere CI
+name: WorkSphere CI/CD
 
 on:
   push:
@@ -6,9 +6,30 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: worksphere_test
+          POSTGRES_USER: worksphere
+          POSTGRES_PASSWORD: worksphere
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U worksphere -d worksphere_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://worksphere:worksphere@127.0.0.1:5432/worksphere_test
+      JWT_SECRET: ci-only-secret-not-used-outside-tests
+      NEXT_PUBLIC_API_URL: https://api.example.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,9 +37,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node create-db.cjs
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npx tsc -p tsconfig.server.json --noEmit
       - run: npm test -- --runInBand
+      - run: npm run build
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/analytics_service/requirements.txt
+      - run: python -m pip install -r python/analytics_service/requirements.txt
+      - run: python -m unittest discover -s python/analytics_service/tests -p "test_*.py"
+      - run: python -m unittest discover -s python/worksphere_processor/tests -p "test_*.py"
+        env:
+          PYTHONPATH: python/worksphere_processor
 
   security:
     runs-on: ubuntu-latest
@@ -33,14 +72,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pip-audit
+      - run: python -m pip install pip-audit
       - run: pip-audit -r python/analytics_service/requirements.txt
 
   docker-build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        dockerfile: [Dockerfile.frontend, Dockerfile.server, Dockerfile.python]
+        include:
+          - dockerfile: Dockerfile.frontend
+            build_args: NEXT_PUBLIC_API_URL=https://api.example.invalid
+          - dockerfile: Dockerfile.server
+            build_args: ""
+          - dockerfile: Dockerfile.python
+            build_args: ""
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -48,4 +94,131 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
           push: false
+
+  publish-staging-images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [quality, python-tests, security, docker-build]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate staging frontend API URL
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+        run: |
+          case "$NEXT_PUBLIC_API_URL" in
+            https://*) ;;
+            *) echo "::error::Set staging environment variable NEXT_PUBLIC_API_URL to the staging API URL."; exit 1 ;;
+          esac
+      - name: Set image prefix
+        id: image
+        run: |
+          repository="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "prefix=ghcr.io/$repository" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.server
+          push: true
+          tags: |
+            ${{ steps.image.outputs.prefix }}-backend:${{ github.sha }}
+            ${{ steps.image.outputs.prefix }}-backend:staging
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build and publish frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          build-args: NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+          push: true
+          tags: |
+            ${{ steps.image.outputs.prefix }}-frontend:${{ github.sha }}-staging
+            ${{ steps.image.outputs.prefix }}-frontend:staging
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: Build and publish analytics image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.python
+          push: true
+          tags: |
+            ${{ steps.image.outputs.prefix }}-analytics:${{ github.sha }}
+            ${{ steps.image.outputs.prefix }}-analytics:staging
+          cache-from: type=gha,scope=analytics
+          cache-to: type=gha,mode=max,scope=analytics
+
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: publish-staging-images
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: worksphere-staging-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Trigger Render staging deploys
+        env:
+          RENDER_FRONTEND_DEPLOY_HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          for name in RENDER_FRONTEND_DEPLOY_HOOK RENDER_BACKEND_DEPLOY_HOOK; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure the $name secret in the staging environment."
+              exit 1
+            fi
+          done
+
+          trigger_deploy() {
+            hook_url="$1"
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --get --data-urlencode "ref=$COMMIT_SHA" "$hook_url" || true)"
+            case "$status" in
+              200|202) ;;
+              *) echo "::error::Render deploy hook failed with HTTP $status."; return 1 ;;
+            esac
+          }
+
+          trigger_deploy "$RENDER_BACKEND_DEPLOY_HOOK"
+          trigger_deploy "$RENDER_FRONTEND_DEPLOY_HOOK"
+      - name: Verify staging health
+        env:
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: |
+          for name in FRONTEND_URL BACKEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Configure the $name variable in the staging environment."
+              exit 1
+            fi
+          done
+
+          wait_for_http_200() {
+            url="$1"
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$url" || true)"
+              if [ "$status" = "200" ]; then
+                return 0
+              fi
+              sleep 10
+            done
+            echo "::error::Health check did not return HTTP 200."
+            return 1
+          }
+
+          wait_for_http_200 "${BACKEND_URL%/}/api/health"
+          wait_for_http_200 "${FRONTEND_URL%/}/"
