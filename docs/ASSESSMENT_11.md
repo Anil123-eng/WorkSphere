@@ -102,7 +102,7 @@ Production deployment is approval-gated and the Render workflow waits for both h
 
 ## Evidence
 
-GitHub Actions retains the workflow run logs and check results as the CI evidence for this assessment. After the first successful run, use the Actions run URL and its test/security/build results in the assessment submission.
+The successful feature-branch run for commit `e541dd7` is [WorkSphere CI run 45673739208](https://github.com/Anil123-eng/WorkSphere/actions/runs/45673739208). Its quality job passed lint, the Next.js build, both TypeScript checks, and all 28 Jest tests across four suites. Both Python test jobs, dependency scans, and all three Docker builds also passed. Staging publication and deployment were skipped because this run was on a feature branch; those jobs require a successful `master` run and the configured GitHub Environments and Render deploy-hook secrets.
 
 Local validation for this implementation:
 
