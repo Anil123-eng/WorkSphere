@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WorkSphere",
-  description: "Multi-Tenant Project Management Platform",
+  title: {
+    default: "WorkSphere | Project Management",
+    template: "%s | WorkSphere",
+  },
+  description:
+    "WorkSphere is a multi-tenant project management platform for organizations, teams, projects and workflow automation.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
