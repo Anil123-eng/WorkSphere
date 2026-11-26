@@ -33,8 +33,8 @@ describe("Background worker database latency recovery", () => {
       throw new Error("Simulated database latency timeout");
     });
     mockedQuery
-      .mockResolvedValueOnce(emptyResult)
-      .mockResolvedValueOnce(emptyResult);
+      .mockImplementationOnce(async () => emptyResult)
+      .mockImplementationOnce(async () => emptyResult);
     const consoleError = jest
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
