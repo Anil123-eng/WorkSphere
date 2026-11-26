@@ -50,6 +50,10 @@ http://localhost:5000
 
 The background job worker starts automatically with the API server.
 
+Interactive OpenAPI documentation is available at `http://localhost:5000/api/docs/`;
+the JSON specification is served at `http://localhost:5000/api/openapi.json`.
+The published contract is maintained in `server/openapi.json`.
+
 ## API Endpoints
 
 ### Health and Projects
@@ -359,3 +363,13 @@ Assessment 08 adds third-party integrations using:
 - Environment-based integration credentials
 
 Payment integration was not included because the current WorkSphere project does not implement subscription or billing plans.
+
+## Assessment 13 - API versioning, pagination, and rate limits
+
+The current Node API is available at both `/api/v1` and its backward-compatible `/api` alias. Swagger UI is served at `/api/docs/`, with the generated OpenAPI contract at `/api/openapi.json`.
+
+`GET /api/v1/projects` (and `/api/projects`) accepts one-based `page` and `limit` query parameters. Defaults are `page=1` and `limit=20`; the maximum limit is 100. The response includes a `pagination` object with `page`, `limit`, `total`, `totalPages`, `hasNext`, and `hasPrevious`. Invalid values return HTTP 400.
+
+API requests are subject to an in-memory fixed-window limit, keyed by client IP. Configure `API_RATE_LIMIT_MAX_REQUESTS` and `API_RATE_LIMIT_WINDOW_SECONDS` (defaults: 100 and 900). Allowed responses include `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `RateLimit-Policy`; over-limit responses return HTTP 429 and `Retry-After`. Limits are per process and are not shared across replicas. The documentation routes are excluded from the limit.
+
+When running behind a trusted reverse proxy, set `TRUST_PROXY_HOPS` to the known proxy hop count; it defaults to `0`. Do not trust arbitrary forwarded headers. The full contract, including auth, validation, webhook, pagination, and rate-limit examples, is available through the OpenAPI endpoints above.

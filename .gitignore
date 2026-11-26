@@ -48,3 +48,10 @@ __pycache__/
 
 # TypeScript build output
 /dist/
+
+# Assessment 12 local test artifacts
+test-results/
+playwright-report/
+frontend-review.txt
+reset-test-password.cjs
+verify-test-password.cjs

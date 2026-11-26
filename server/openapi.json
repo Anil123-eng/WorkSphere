@@ -1,0 +1,1030 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "WorkSphere Node API",
+    "version": "1.0.0",
+    "description": "OpenAPI contract for WorkSphere Node API v1. The /api/v1 paths are versioned, and matching unversioned /api paths remain supported. Rate limits use a per-process, per-client-IP fixed window (default 100 requests per 900 seconds). Project listing supports page and limit query parameters."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Local development server"
+    }
+  ],
+  "x-api-versioning": {
+    "status": "v1-with-legacy-aliases",
+    "currentContract": "1.0.0",
+    "versionedPrefix": "/api/v1",
+    "legacyPrefix": "/api"
+  },
+  "x-rate-limit-policy": {
+    "status": "enforced",
+    "scope": "per-process, per-client-IP",
+    "algorithm": "fixed-window",
+    "maxRequests": 100,
+    "windowSeconds": 900,
+    "headers": {
+      "RateLimit-Limit": "Maximum requests allowed in the current window.",
+      "RateLimit-Remaining": "Requests remaining in the current window.",
+      "RateLimit-Reset": "Seconds until the current window resets.",
+      "RateLimit-Policy": "Configured request quota and window.",
+      "Retry-After": "Seconds to wait when a request receives HTTP 429."
+    }
+  },
+  "tags": [
+    { "name": "Health", "description": "Service health." },
+    { "name": "Authentication", "description": "Registration, login, and refresh-token sessions." },
+    { "name": "Projects", "description": "Organization-scoped project operations." },
+    { "name": "Tasks", "description": "Organization-scoped task operations." },
+    { "name": "Task events", "description": "Authenticated Server-Sent Events stream." },
+    { "name": "Integrations", "description": "Email delivery and signed provider webhooks." },
+    { "name": "Attachments", "description": "Presigned upload and download links." }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Check API health",
+        "operationId": "getApiHealth",
+        "responses": {
+          "200": {
+            "description": "API is available.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": { "success": true, "message": "WorkSphere API is running" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register an organization and its owner",
+        "operationId": "registerOrganization",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" },
+              "example": {
+                "name": "Avery Smith",
+                "email": "avery@example.com",
+                "password": "ExamplePass123!",
+                "organizationName": "Acme Studio"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Organization and owner created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Organization and owner registered successfully",
+                  "data": {
+                    "user": { "id": "41", "name": "Avery Smith", "email": "avery@example.com" },
+                    "organization": { "id": "12", "name": "Acme Studio" },
+                    "role": "owner",
+                    "accessToken": "eyJ...access",
+                    "refreshToken": "opaque-refresh-token"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Authenticate a user",
+        "description": "If a user belongs to multiple organizations, organizationId is required.",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" },
+              "example": {
+                "email": "avery@example.com",
+                "password": "ExamplePass123!",
+                "organizationId": 12
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login succeeded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Login successful",
+                  "data": {
+                    "user": { "id": 41, "name": "Avery Smith", "email": "avery@example.com" },
+                    "organization": { "id": 12, "name": "Acme Studio" },
+                    "role": "owner",
+                    "accessToken": "eyJ...access",
+                    "refreshToken": "opaque-refresh-token"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Rotate a refresh token",
+        "operationId": "refreshTokens",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshRequest" },
+              "example": { "refreshToken": "opaque-refresh-token" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new access token and refresh token were issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TokenResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Access token refreshed successfully",
+                  "data": {
+                    "accessToken": "eyJ...new-access",
+                    "refreshToken": "opaque-new-refresh-token"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Revoke a refresh-token session",
+        "operationId": "logout",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshRequest" },
+              "example": { "refreshToken": "opaque-refresh-token" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session revoked.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "example": { "success": true, "message": "Logout successful" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "tags": ["Projects"],
+        "summary": "List projects in the authenticated organization",
+        "description": "Returns an organization-scoped page of projects. Defaults to page 1 with 20 records; limit is capped at 100.",
+        "operationId": "listProjects",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "One-based page number.",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "default": 1 },
+            "example": 1
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, from 1 through 100.",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+            "example": 20
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data", "pagination"],
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Project" }
+                    },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": [
+                    {
+                      "id": "8",
+                      "organization_id": "12",
+                      "name": "Website Redesign",
+                      "description": "Refresh the company website",
+                      "status": "active",
+                      "created_at": "2026-01-15T10:00:00.000Z",
+                      "updated_at": "2026-01-15T10:00:00.000Z"
+                    }
+                  ],
+                  "pagination": {
+                    "page": 1,
+                    "limit": 20,
+                    "total": 1,
+                    "totalPages": 1,
+                    "hasNext": false,
+                    "hasPrevious": false
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "tags": ["Projects"],
+        "summary": "Create a project",
+        "operationId": "createProject",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectWriteRequest" },
+              "example": { "name": "Website Redesign", "description": "Refresh the company website" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProjectMutationResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Project created successfully",
+                  "data": {
+                    "id": "8",
+                    "organization_id": "12",
+                    "name": "Website Redesign",
+                    "description": "Refresh the company website",
+                    "status": "active",
+                    "created_at": "2026-01-15T10:00:00.000Z",
+                    "updated_at": "2026-01-15T10:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/projects/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Positive project ID.",
+          "schema": { "type": "integer", "minimum": 1 },
+          "example": 8
+        }
+      ],
+      "get": {
+        "tags": ["Projects"],
+        "summary": "Get a project",
+        "operationId": "getProject",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Project returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProjectMutationResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "put": {
+        "tags": ["Projects"],
+        "summary": "Replace project name and description",
+        "operationId": "updateProject",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectWriteRequest" },
+              "example": { "name": "Updated Website", "description": "Updated scope" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project updated.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProjectMutationResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "tags": ["Projects"],
+        "summary": "Delete a project",
+        "operationId": "deleteProject",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Project deleted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "example": { "success": true, "message": "Project deleted successfully" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/tasks": {
+      "post": {
+        "tags": ["Tasks"],
+        "summary": "Create a task",
+        "description": "Requires owner, project_manager, or team_member role. Task creation and event-job insertion share a database transaction.",
+        "operationId": "createTask",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCreateRequest" },
+              "example": {
+                "projectId": 8,
+                "title": "Implement dashboard",
+                "description": "Build the project dashboard",
+                "dueDate": "2026-12-05"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created and event queued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/tasks/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Positive task ID.",
+          "schema": { "type": "integer", "minimum": 1 },
+          "example": 23
+        }
+      ],
+      "patch": {
+        "tags": ["Tasks"],
+        "summary": "Update task status",
+        "operationId": "updateTaskStatus",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskStatusRequest" },
+              "example": { "status": "completed" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task updated and event queued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/task-events/stream": {
+      "get": {
+        "tags": ["Task events"],
+        "summary": "Subscribe to task updates",
+        "description": "Authenticated organization-scoped Server-Sent Events. Events include task.created and task.updated; the stream sends a connected event first and periodic heartbeat comments.",
+        "operationId": "streamTaskEvents",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "SSE stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" },
+                "example": "event: connected\\ndata: {\"message\":\"Connected to task updates\"}\\n\\nevent: task.created\\ndata: {\"type\":\"task.created\",\"organizationId\":12,\"projectId\":8,\"taskId\":23,\"timestamp\":\"2026-01-15T10:00:00.000Z\"}\\n\\n"
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/integrations/email": {
+      "post": {
+        "tags": ["Integrations"],
+        "summary": "Send an email",
+        "description": "Requires owner or project_manager role. Subject is limited to 200 characters and HTML content to 20,000 characters.",
+        "operationId": "sendEmail",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EmailRequest" },
+              "example": {
+                "to": "recipient@example.com",
+                "subject": "Project update",
+                "html": "<p>Your project has been updated.</p>"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email accepted by the configured provider.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Email sent successfully",
+                  "data": { "id": "provider-message-id" }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/webhooks/resend": {
+      "post": {
+        "tags": ["Integrations"],
+        "summary": "Receive a signed Resend webhook",
+        "description": "Provide the Svix signature headers. The signature is checked against the raw request body and timestamp; duplicate event IDs are accepted and ignored.",
+        "operationId": "receiveResendWebhook",
+        "parameters": [
+          {
+            "name": "svix-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "msg_123"
+          },
+          {
+            "name": "svix-timestamp",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "1735689600"
+          },
+          {
+            "name": "svix-signature",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "v1,base64-signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResendWebhookRequest" },
+              "example": { "type": "email.delivered", "data": { "email_id": "example-id" } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event stored or duplicate safely ignored.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" },
+                "examples": {
+                  "recorded": {
+                    "value": { "success": true, "message": "Webhook event recorded successfully" }
+                  },
+                  "duplicate": {
+                    "value": { "success": true, "message": "Duplicate event ignored" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": {
+            "description": "Webhook integration is not configured.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": { "success": false, "message": "Webhook integration is not configured" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attachments/upload-url": {
+      "post": {
+        "tags": ["Attachments"],
+        "summary": "Create a presigned upload URL",
+        "description": "Provide exactly one organization-owned projectId or taskId. Maximum file size is 10 MiB. Supported types are PDF, JPEG, PNG, and plain text. The URL expires after 300 seconds.",
+        "operationId": "createAttachmentUploadUrl",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UploadUrlRequest" },
+              "example": {
+                "fileName": "project-plan.pdf",
+                "contentType": "application/pdf",
+                "sizeBytes": 102400,
+                "projectId": 8
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload URL created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadUrlResponse" },
+                "example": {
+                  "success": true,
+                  "message": "Upload URL created successfully",
+                  "data": {
+                    "attachmentId": "31",
+                    "uploadUrl": "https://storage.example.invalid/presigned-upload",
+                    "storageKey": "12/opaque-project-plan.pdf",
+                    "expiresIn": 300
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/attachments/{id}/download-url": {
+      "get": {
+        "tags": ["Attachments"],
+        "summary": "Create a presigned download URL",
+        "operationId": "createAttachmentDownloadUrl",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive attachment ID belonging to the authenticated organization.",
+            "schema": { "type": "integer", "minimum": 1 },
+            "example": 31
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download URL created; expires after 300 seconds.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DownloadUrlResponse" },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "fileName": "project-plan.pdf",
+                    "downloadUrl": "https://storage.example.invalid/presigned-download",
+                    "expiresIn": 300
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Use the accessToken returned by register or login. Refresh tokens are not accepted as bearer credentials."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request is missing required data or contains invalid values.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "Project name is required" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Authentication or token validation failed.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "Invalid or expired authentication token" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated user lacks required organization membership or role.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "You do not have permission to perform this action" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The resource does not exist or is not visible to the authenticated organization.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "Project not found" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The request conflicts with an existing resource.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "An account with this email already exists" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "The request could not be completed. Internal exception details are not returned.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiError" },
+            "example": { "success": false, "message": "Internal server error" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "message": { "type": "string", "example": "Invalid request" }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean", "example": true },
+          "message": { "type": "string" },
+          "data": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["name", "email", "password", "organizationName"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "example": "Avery Smith" },
+          "email": { "type": "string", "format": "email", "example": "avery@example.com" },
+          "password": { "type": "string", "minLength": 8, "format": "password", "example": "ExamplePass123!" },
+          "organizationName": { "type": "string", "minLength": 1, "example": "Acme Studio" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "format": "password" },
+          "organizationId": { "type": "integer", "minimum": 1, "description": "Required when the user has memberships in multiple organizations." }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "required": ["refreshToken"],
+        "properties": {
+          "refreshToken": { "type": "string", "minLength": 1 }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "example": true },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["user", "organization", "role", "accessToken", "refreshToken"],
+            "properties": {
+              "user": {
+                "type": "object",
+                "properties": {
+                  "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+                  "name": { "type": "string" },
+                  "email": { "type": "string", "format": "email" }
+                }
+              },
+              "organization": {
+                "type": "object",
+                "properties": {
+                  "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+                  "name": { "type": "string" }
+                }
+              },
+              "role": { "type": "string", "enum": ["owner", "project_manager", "team_member", "auditor"] },
+              "accessToken": { "type": "string" },
+              "refreshToken": { "type": "string" }
+            }
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "required": ["accessToken", "refreshToken"],
+            "properties": {
+              "accessToken": { "type": "string" },
+              "refreshToken": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "organization_id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["active", "completed", "archived"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "required": ["page", "limit", "total", "totalPages", "hasNext", "hasPrevious"],
+        "properties": {
+          "page": { "type": "integer", "minimum": 1 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "total": { "type": "integer", "minimum": 0 },
+          "totalPages": { "type": "integer", "minimum": 0 },
+          "hasNext": { "type": "boolean" },
+          "hasPrevious": { "type": "boolean" }
+        }
+      },
+      "ProjectWriteRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "example": "Website Redesign" },
+          "description": { "type": "string", "example": "Refresh the company website" }
+        }
+      },
+      "ProjectMutationResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Project" }
+        }
+      },
+      "TaskCreateRequest": {
+        "type": "object",
+        "required": ["projectId", "title"],
+        "properties": {
+          "projectId": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "dueDate": { "type": "string", "format": "date", "nullable": true }
+        }
+      },
+      "TaskStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string", "enum": ["todo", "in_progress", "completed"] }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "organization_id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "project_id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string", "enum": ["todo", "in_progress", "completed"] },
+          "due_date": { "type": "string", "format": "date", "nullable": true },
+          "created_by": { "oneOf": [{ "type": "string" }, { "type": "integer" }], "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Task" }
+        }
+      },
+      "EmailRequest": {
+        "type": "object",
+        "required": ["to", "subject", "html"],
+        "properties": {
+          "to": { "type": "string", "format": "email" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "html": { "type": "string", "minLength": 1, "maxLength": 20000 }
+        }
+      },
+      "ResendWebhookRequest": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "minLength": 1, "example": "email.delivered" }
+        },
+        "additionalProperties": true
+      },
+      "UploadUrlRequest": {
+        "type": "object",
+        "required": ["fileName", "contentType", "sizeBytes"],
+        "properties": {
+          "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "contentType": { "type": "string", "enum": ["application/pdf", "image/jpeg", "image/png", "text/plain"] },
+          "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 10485760 },
+          "projectId": { "type": "integer", "minimum": 1, "description": "Set this or taskId, but not both." },
+          "taskId": { "type": "integer", "minimum": 1, "description": "Set this or projectId, but not both." }
+        }
+      },
+      "UploadUrlResponse": {
+        "type": "object",
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "attachmentId": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+              "uploadUrl": { "type": "string", "format": "uri" },
+              "storageKey": { "type": "string" },
+              "expiresIn": { "type": "integer", "example": 300 }
+            }
+          }
+        }
+      },
+      "DownloadUrlResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "fileName": { "type": "string" },
+              "downloadUrl": { "type": "string", "format": "uri" },
+              "expiresIn": { "type": "integer", "example": 300 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

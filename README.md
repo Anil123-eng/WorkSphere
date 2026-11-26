@@ -191,6 +191,14 @@ npm run server
 
 API base URL: http://localhost:5000
 
+### API Documentation
+
+- Node/Express Swagger UI: `http://localhost:5000/api/docs/`
+- Node OpenAPI JSON: `http://localhost:5000/api/openapi.json`
+- FastAPI analytics Swagger UI: `http://127.0.0.1:8001/docs`
+- FastAPI OpenAPI JSON: `http://127.0.0.1:8001/openapi.json`
+- Assessment setup, API limitations, and test guidance: [Assessment 13 documentation](./docs/ASSESSMENT_13.md)
+
 ## API Endpoints
 
 ### Authentication

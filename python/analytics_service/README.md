@@ -150,5 +150,15 @@ The API only allows filenames from the configured samples directory. Absolute pa
 
 The service uses the reusable processing package located at `python/worksphere\_processor/`.
 
+## Assessment 13 - Versioning, pagination, and rate limits
+
+Routes are available under `/v1` and at their original unversioned paths for backward compatibility. For example, the service health check is available at `/v1/health` and `/health`. OpenAPI is available at `/openapi.json`; interactive documentation is available at `/docs` and `/redoc`.
+
+The productivity and overdue-task report operations accept one-based `page` and `limit` query parameters. Defaults are `page=1` and `limit=20`; `limit` is capped at 100. Their responses include pagination metadata: `page`, `limit`, `total`, `totalPages`, `hasNext`, and `hasPrevious`. Invalid query values return FastAPI's HTTP 422 validation response. Requests beyond the last page return an empty result.
+
+The API enforces a per-client-IP fixed-window limit, configurable with `API_RATE_LIMIT_MAX_REQUESTS` and `API_RATE_LIMIT_WINDOW_SECONDS` (defaults: 100 requests per 900 seconds). Allowed API responses include `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `RateLimit-Policy`; over-limit responses return HTTP 429 and `Retry-After`. Limits are held in memory per process and are not shared across replicas. Documentation routes are excluded. The service uses the direct ASGI client address and does not interpret forwarded headers.
+
+The analytics API does not currently authenticate users. It accepts report requests only for files under the configured samples directory and rejects unsafe paths. See `docs/ASSESSMENT_13.md` for the setup, complete contract details, and validation evidence.
+
 
 

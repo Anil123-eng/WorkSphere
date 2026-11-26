@@ -40,6 +40,8 @@ jobs:
       - run: node create-db.cjs
       - run: npm run lint
       - run: npm test -- --runInBand
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm run build
       - run: npx tsc --noEmit
       - run: npx tsc -p tsconfig.server.json --noEmit

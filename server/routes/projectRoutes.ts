@@ -3,6 +3,10 @@ import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db";
 import { authenticateToken } from "../middleware/authMiddleware";
 import { authorizeRoles } from "../middleware/roleMiddleware";
+import {
+  createPaginationMetadata,
+  parsePagination,
+} from "../utils/pagination";
 
 const router = Router();
 
@@ -12,20 +16,46 @@ router.use(authenticateToken);
 // GET all projects for the authenticated user's organization
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const pagination = parsePagination(req.query.page, req.query.limit);
+    if (!pagination.success) {
+      res.status(400).json({
+        success: false,
+        message: pagination.message,
+      });
+      return;
+    }
+
     const organizationId = req.user!.organizationId;
 
+    const countResult = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM projects
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
     const result = await pool.query(
       `SELECT id, organization_id, name, description, status,
               created_at, updated_at
        FROM projects
        WHERE organization_id = $1
-       ORDER BY id`,
-      [organizationId]
+       ORDER BY id
+       LIMIT $2 OFFSET $3`,
+      [
+        organizationId,
+        pagination.pagination.limit,
+        pagination.pagination.offset,
+      ]
     );
+    const total = Number(countResult.rows[0].total);
 
     res.status(200).json({
       success: true,
       data: result.rows,
+      pagination: createPaginationMetadata(
+        pagination.pagination.page,
+        pagination.pagination.limit,
+        total
+      ),
     });
   } catch (error) {
     next(error);
