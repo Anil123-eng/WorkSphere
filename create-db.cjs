@@ -23,6 +23,7 @@ async function initializeDatabase() {
       path.join(__dirname, "server", "database", "auth-schema.sql"),
       path.join(__dirname, "server", "database", "assessment-07-schema.sql"),
       path.join(__dirname, "server", "database", "assessment-08-schema.sql"),
+      path.join(__dirname, "server", "database", "assessment-15-schema.sql"),
     ];
     let sql = schemaFiles
       .map((schemaFile) => fs.readFileSync(schemaFile, "utf8"))

@@ -63,7 +63,7 @@ Each activity stores the actor, task version, timestamp, and complete task snaps
 Use an isolated local/test PostgreSQL database and synthetic accounts only. Do not point these commands at production.
 
 1. Install the existing Node dependencies with `npm ci`.
-2. On a new local Compose database, `docker/postgres/init/05-assessment-15.sql` is applied by the existing init-directory mount. For an existing local/test database, set `DATABASE_URL` to that isolated database and apply the additive migration from the repository root:
+2. On a new local Compose database, `docker/postgres/init/05-assessment-15.sql` is applied by the existing init-directory mount. For a new standalone local/test database, `node create-db.cjs` initializes the core schemas through Assessment 15. For an existing local/test database, set `DATABASE_URL` to that isolated database and apply the additive migration from the repository root:
 
    ```powershell
    psql "$env:DATABASE_URL" -f server/database/assessment-15-schema.sql

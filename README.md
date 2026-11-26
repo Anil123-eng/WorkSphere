@@ -171,7 +171,7 @@ CREATE DATABASE worksphere_db;
 node create-db.cjs
 ```
 
-The initializer loads the core, authentication, Assessment 07, and Assessment 08 schemas. It reads `DATABASE_URL` from the root `.env` file.
+The initializer loads the core, authentication, Assessment 07, Assessment 08, and Assessment 15 schemas. It reads `DATABASE_URL` from the root `.env` file.
 
 ### 6. Start the frontend
 
