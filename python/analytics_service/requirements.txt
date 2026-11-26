@@ -1,4 +1,4 @@
 fastapi
 uvicorn
 httpx
-PyJWT==2.9.0
+PyJWT==2.15.0
