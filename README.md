@@ -265,6 +265,7 @@ npm run build
 GitHub Actions runs quality checks, tests, dependency scans, and Docker builds on feature branches and pull requests. The release workflow publishes GHCR images and deploys staging after successful checks on `master`; production is manually dispatched and gated by GitHub Environment approval.
 
 See [Assessment 11 CI/CD setup](./docs/ASSESSMENT_11.md) for workflow behavior, required environment configuration, deployment setup, and rollback instructions.
+See [Assessment 14 production deployment](./docs/ASSESSMENT_14.md) for Render domains, private services, backups, restore drills, health checks, and operations.
 
 ### Current Test Results
 
@@ -292,6 +293,7 @@ These features are planned for subsequent development assessments.
 - Assessment 03: PostgreSQL data model and project persistence implemented.
 - Assessment 04: Authentication, authorization, refresh-token security, and organization-level project isolation implemented and tested.
 - Assessment 11: CI/CD workflows for quality checks, security scans, image publishing, staging deployment, and approval-gated production release.
+- Assessment 14: Render production deployment workflows and operational runbook; live domains, secrets, and restore evidence still require Render account configuration.
 
 WorkSphere is being developed incrementally as part of a hands-on software engineering training project.
 ## Docker Deployment

@@ -19,7 +19,7 @@ The workflow:
 - Runs Python analytics and processor unit tests.
 - Runs `npm audit --audit-level=high` and `pip-audit`.
 - Builds all three Docker images without publishing on pull requests.
-- On `master`, publishes frontend, backend, and analytics images to GHCR after all checks pass, triggers both Render staging deploy hooks for the exact commit, and polls the staging frontend/API health endpoints.
+- On `master`, publishes frontend, backend, and analytics images to GHCR after all checks pass, triggers Render staging deploy hooks for the exact commit, and polls the staging frontend/API/analytics health endpoints. The worker uses the backend image with a worker-specific start command.
 
 The staging frontend image is built with the staging `NEXT_PUBLIC_API_URL`. Render Git-connected deployments use the environment configured on each Render service.
 
@@ -31,16 +31,16 @@ Run this workflow manually from GitHub Actions and enter a full 40-character com
 
 Create GitHub Environments named `staging` and `production`.
 
-Configure these **variables** in the `staging` environment:
+Configure these **variables** in both `staging` and `production` environments:
 
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | API base URL used when building the staging frontend image |
 | `FRONTEND_URL` | Public frontend URL used for deployment health checks |
 | `BACKEND_URL` | Public backend base URL; the workflow checks `/api/health` |
+| `ANALYTICS_URL` | Public analytics base URL; the workflow checks `/health` |
 
-Configure `FRONTEND_URL` and `BACKEND_URL` in the `production` environment for its health checks. Set `NEXT_PUBLIC_API_URL` in the Render frontend service's environment for its production source build.
-Use API base URLs without a trailing slash.
+All three health-check URLs must use HTTPS. Use API base URLs without a trailing slash. Set `NEXT_PUBLIC_API_URL` in the Render frontend service's environment for its production source build.
 
 Configure these **secrets** in each environment:
 
@@ -48,10 +48,14 @@ Configure these **secrets** in each environment:
 |---|---|
 | `RENDER_FRONTEND_DEPLOY_HOOK` | Deploy hook URL for that environment's Render frontend service |
 | `RENDER_BACKEND_DEPLOY_HOOK` | Deploy hook URL for that environment's Render backend service |
+| `RENDER_ANALYTICS_DEPLOY_HOOK` | Deploy hook URL for that environment's Render analytics web service |
+| `RENDER_WORKER_DEPLOY_HOOK` | Deploy hook URL for that environment's Render background worker |
 
 Do not commit deploy-hook URLs or other credentials. Use the same variable/secret names in both environments, with environment-specific values.
 
 In the Render Dashboard, keep the frontend and backend services connected to this repository, turn off automatic deploys, and create a deploy hook for each service. The workflow sends the selected commit SHA as the hook's `ref` parameter.
+
+Create the analytics service as a web service using `Dockerfile.python`, and the background worker as a worker using `Dockerfile.server` with the start command `node dist/server/worker.js`. The API and worker both need the same internal Postgres and Key Value connection URLs; the worker does not need a public URL. Set the analytics service's health check path to `/health`. Render HTTP health checks are not available for background workers, so confirm the worker is running from its service status and logs after deployment.
 
 Set the `production` environment to require approval from at least one reviewer and restrict its deployment branches to `master`. Configure `staging` without required reviewers so successful master builds can deploy automatically.
 
