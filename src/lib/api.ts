@@ -52,6 +52,37 @@ export interface SessionResponse {
   };
 }
 
+export interface OrganizationOption {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export type AssignableOrganizationRole = "project_manager" | "team_member";
+
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  data: {
+    accessToken: string;
+    refreshToken: string;
+    role: string;
+    user: { id: number; name: string; email: string };
+    organization: { id: number; name: string };
+  };
+}
+
+export interface OrganizationMemberResponse {
+  success: boolean;
+  message: string;
+  data: {
+    organizationId: number;
+    userId: number;
+    email: string;
+    role: AssignableOrganizationRole;
+  };
+}
+
 export interface Project {
   id: number | string;
   name: string;
@@ -117,11 +148,30 @@ export async function revokeSession(refreshToken: string) {
   });
 }
 
-export async function login(email: string, password: string) {
-  return apiRequest("/api/auth/login", {
+export async function login(
+  email: string,
+  password: string,
+  organizationId?: number
+) {
+  return apiRequest<LoginResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, organizationId }),
   });
+}
+
+export async function addOrganizationMember(
+  token: string,
+  email: string,
+  role: AssignableOrganizationRole
+) {
+  return apiRequest<OrganizationMemberResponse>(
+    "/api/organizations/members",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, role }),
+    },
+    token
+  );
 }
 
 export async function register(

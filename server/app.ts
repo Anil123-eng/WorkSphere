@@ -8,6 +8,7 @@ import projectRoutes from "./routes/projectRoutes";
 import authRoutes from "./routes/authRoutes";
 import taskRoutes from "./routes/taskRoutes";
 import taskEventRoutes from "./routes/taskEventRoutes";
+import organizationRoutes from "./routes/organizationRoutes";
 
 import { errorHandler } from "./middleware/errorHandler";
 import webhookRoutes from "./routes/webhookRoutes";
@@ -97,6 +98,7 @@ apiRoutes.use("/auth", authRoutes);
 apiRoutes.use("/webhooks", webhookRoutes);
 apiRoutes.use("/integrations", integrationRoutes);
 apiRoutes.use("/attachments", attachmentRoutes);
+apiRoutes.use("/organizations", organizationRoutes);
 
 // Readiness check: verifies the database is reachable.
 apiRoutes.get("/health/ready", async (req, res) => {

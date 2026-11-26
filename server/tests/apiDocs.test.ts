@@ -12,6 +12,15 @@ describe("Node API documentation", () => {
     expect(response.body.paths["/api/v1/auth/login"].post.operationId).toBe(
       "loginV1"
     );
+    expect(
+      response.body.paths["/api/auth/login"].post.responses["409"]
+    ).toBeDefined();
+    expect(
+      response.body.paths["/api/v1/organizations/members"].post.operationId
+    ).toBe("addOrganizationMemberV1");
+    expect(
+      response.body.paths["/api/organizations/members"].post.security
+    ).toEqual([{ bearerAuth: [] }]);
     expect(response.body.paths["/api/webhooks/resend"].post.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "svix-id", in: "header", required: true }),

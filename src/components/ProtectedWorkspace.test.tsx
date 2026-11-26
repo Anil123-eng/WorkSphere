@@ -60,20 +60,23 @@ describe("ProtectedWorkspace", () => {
     expect(mockedGetSession).not.toHaveBeenCalled();
   });
 
-  test("renders content after the backend verifies the expected role", async () => {
+  test.each(["owner", "project_manager", "team_member"])(
+    "renders content after the backend verifies the %s role",
+    async (role) => {
     localStorage.setItem("accessToken", "valid-access");
     mockedGetSession.mockResolvedValue({
       success: true,
-      data: { userId: 1, organizationId: 1, role: "owner" },
+      data: { userId: 1, organizationId: 1, role },
     });
 
-    renderWorkspace();
+    renderWorkspace(role);
 
     expect(await screen.findByText("Protected workspace content")).toBeVisible();
     expect(replace).not.toHaveBeenCalled();
-  });
+    }
+  );
 
-  test("redirects an authenticated user with the wrong role", async () => {
+  test("shows access denied instead of rendering another role's dashboard", async () => {
     localStorage.setItem("accessToken", "valid-access");
     mockedGetSession.mockResolvedValue({
       success: true,
@@ -82,12 +85,14 @@ describe("ProtectedWorkspace", () => {
 
     renderWorkspace("owner");
 
-    await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith("/team-member");
-    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Access denied");
     expect(
       screen.queryByText("Protected workspace content")
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open your authorized workspace" })
+    ).toHaveAttribute("href", "/team-member");
+    expect(replace).not.toHaveBeenCalled();
   });
 
   test("rotates an expired access token before rendering the workspace", async () => {

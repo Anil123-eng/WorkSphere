@@ -306,9 +306,17 @@ router.post(
       } else if (memberships.length === 1) {
         membership = memberships[0];
       } else {
-        res.status(400).json({
+        res.status(409).json({
           success: false,
-          message: "Please provide an organizationId",
+          code: "ORGANIZATION_SELECTION_REQUIRED",
+          message: "Select an organization to continue",
+          data: {
+            organizations: memberships.map((item) => ({
+              id: Number(item.organization_id),
+              name: item.organization_name,
+              role: item.role,
+            })),
+          },
         });
         return;
       }

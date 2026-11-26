@@ -57,6 +57,11 @@ export default function Home() {
         <p className="mt-2 text-gray-600">
           Manage projects, teams, tasks and workflows in one place.
         </p>
+        <p className="mt-2 max-w-3xl text-sm text-gray-600">
+          Choose a workspace, then sign in with an account assigned that role
+          in the selected organization. Selecting a workspace does not grant
+          access.
+        </p>
 
         <h3 className="mt-10 text-xl font-semibold text-gray-800">
           Select your role

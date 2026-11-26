@@ -1,5 +1,7 @@
 export function getRoleDestination(role: string): string {
   switch (role) {
+    case "admin":
+      return "/platform-admin";
     case "owner":
       return "/organization-owner";
     case "project_manager":

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
@@ -20,9 +21,10 @@ export default function ProtectedWorkspace({
   children,
 }: ProtectedWorkspaceProps) {
   const router = useRouter();
-  const [status, setStatus] = useState<"checking" | "authorized" | "error">(
-    "checking"
-  );
+  const [status, setStatus] = useState<
+    "checking" | "authorized" | "denied" | "error"
+  >("checking");
+  const [deniedDestination, setDeniedDestination] = useState("/");
   const [error, setError] = useState("");
   const [retryCount, setRetryCount] = useState(0);
 
@@ -80,7 +82,8 @@ export default function ProtectedWorkspace({
         if (!active) return;
 
         if (session.data.role !== requiredRole) {
-          router.replace(getRoleDestination(session.data.role));
+          setDeniedDestination(getRoleDestination(session.data.role));
+          setStatus("denied");
           return;
         }
 
@@ -115,6 +118,24 @@ export default function ProtectedWorkspace({
 
   if (status === "authorized") {
     return <>{children}</>;
+  }
+
+  if (status === "denied") {
+    return (
+      <main className="p-6" role="alert">
+        <h1 className="text-xl font-semibold text-gray-900">Access denied</h1>
+        <p className="mt-2 text-gray-700">
+          This account does not have the {requiredRole.replaceAll("_", " ")}{" "}
+          role required for this workspace.
+        </p>
+        <Link
+          href={deniedDestination}
+          className="mt-4 inline-block rounded bg-blue-600 px-4 py-2 font-semibold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Open your authorized workspace
+        </Link>
+      </main>
+    );
   }
 
   if (status === "error") {

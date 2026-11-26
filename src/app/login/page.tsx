@@ -3,19 +3,39 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/api";
+import {
+  ApiError,
+  login,
+  type OrganizationOption,
+} from "@/lib/api";
 import { getRoleDestination } from "@/lib/auth";
 
-type LoginResponse = {
-  success: boolean;
-  message: string;
-  data: {
-    accessToken: string;
-    refreshToken: string;
-    role: string;
-    user: { id: number; name: string; email: string };
-  };
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getOrganizationOptions(error: unknown): OrganizationOption[] | null {
+  if (
+    !(error instanceof ApiError) ||
+    error.status !== 409 ||
+    !isRecord(error.responseBody) ||
+    error.responseBody.code !== "ORGANIZATION_SELECTION_REQUIRED" ||
+    !isRecord(error.responseBody.data) ||
+    !Array.isArray(error.responseBody.data.organizations)
+  ) {
+    return null;
+  }
+
+  const organizations = error.responseBody.data.organizations.filter(
+    (organization): organization is OrganizationOption =>
+      isRecord(organization) &&
+      typeof organization.id === "number" &&
+      typeof organization.name === "string" &&
+      typeof organization.role === "string"
+  );
+
+  return organizations.length > 0 ? organizations : null;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,6 +44,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,7 +53,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = (await login(email, password)) as LoginResponse;
+      const result = await (selectedOrganizationId
+        ? login(email, password, Number(selectedOrganizationId))
+        : login(email, password));
 
       if (!result.success) {
         throw new Error(result.message || "Login failed");
@@ -44,7 +68,20 @@ export default function LoginPage() {
 
       router.push(getRoleDestination(result.data.role));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const availableOrganizations = getOrganizationOptions(err);
+      if (availableOrganizations) {
+        setOrganizations(availableOrganizations);
+        setSelectedOrganizationId((current) =>
+          availableOrganizations.some(
+            (organization) => String(organization.id) === current
+          )
+            ? current
+            : String(availableOrganizations[0].id)
+        );
+        setError("");
+      } else {
+        setError(err instanceof Error ? err.message : "Login failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -74,7 +111,11 @@ export default function LoginPage() {
             type="email"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setOrganizations([]);
+              setSelectedOrganizationId("");
+            }}
             placeholder="Enter your email"
             className={inputClass}
           />
@@ -95,6 +136,33 @@ export default function LoginPage() {
           />
         </div>
 
+        {organizations.length > 0 && (
+          <div>
+            <label htmlFor="login-organization" className={labelClass}>
+              Organization
+            </label>
+            <select
+              id="login-organization"
+              required
+              value={selectedOrganizationId}
+              onChange={(event) =>
+                setSelectedOrganizationId(event.target.value)
+              }
+              className={inputClass}
+            >
+              {organizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.name} ({organization.role.replaceAll("_", " ")})
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-sm text-gray-600" role="status">
+              This account belongs to more than one organization. Choose which
+              organization to open.
+            </p>
+          </div>
+        )}
+
         {error && (
           <p
             role="alert"
@@ -109,10 +177,20 @@ export default function LoginPage() {
           type="submit"
           disabled={loading}
           aria-busy={loading}
-          aria-label={loading ? "Signing in, please wait" : "Login"}
+          aria-label={
+            loading
+              ? "Signing in, please wait"
+              : organizations.length > 0
+                ? "Continue to workspace"
+                : "Login"
+          }
           className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Signing in..." : "Login"}
+          {loading
+            ? "Signing in..."
+            : organizations.length > 0
+              ? "Continue"
+              : "Login"}
         </button>
 
         <p className="text-center text-sm text-gray-600">

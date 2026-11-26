@@ -108,7 +108,7 @@
       "post": {
         "tags": ["Authentication"],
         "summary": "Authenticate a user",
-        "description": "If a user belongs to multiple organizations, organizationId is required.",
+        "description": "If a user belongs to multiple organizations, first authenticate with valid credentials to receive the user's available organizations, then submit organizationId to select one.",
         "operationId": "login",
         "requestBody": {
           "required": true,
@@ -146,6 +146,79 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": {
+            "description": "Credentials are valid, but the user must select an organization.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": "ORGANIZATION_SELECTION_REQUIRED",
+                  "message": "Select an organization to continue",
+                  "data": {
+                    "organizations": [
+                      { "id": 12, "name": "Acme Studio", "role": "project_manager" }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/organizations/members": {
+      "post": {
+        "tags": ["Organizations"],
+        "summary": "Add a registered account to the authenticated organization",
+        "description": "Only an authenticated organization owner can add a previously registered account as a project manager or team member. The organization is taken from the verified access token; a client-supplied organizationId is ignored.",
+        "operationId": "addOrganizationMember",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "role"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "role": {
+                    "type": "string",
+                    "enum": ["project_manager", "team_member"]
+                  }
+                }
+              },
+              "example": {
+                "email": "member@example.com",
+                "role": "team_member"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The account was added to the authenticated organization.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Organization membership added",
+                  "data": {
+                    "organizationId": 12,
+                    "userId": 41,
+                    "email": "member@example.com",
+                    "role": "team_member"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
