@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { pool } from "../db";
+import { loadTaskEventReplayPage } from "../routes/taskEventRoutes";
 import { enqueueJob, processPendingJobs } from "../utils/backgroundJobs";
 import { taskEvents } from "../utils/taskEvents";
 
@@ -94,7 +95,14 @@ describe("Background job retries", () => {
       idempotencyKey
     );
 
-    await processPendingJobs();
+    const errorLog = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      await processPendingJobs();
+    } finally {
+      errorLog.mockRestore();
+    }
 
     const result = await pool.query(
       `SELECT status, attempts, max_attempts, locked_at, last_error,
@@ -131,6 +139,156 @@ describe("Background job retries", () => {
     );
     expect(recovered.rows[0].status).toBe("completed");
     expect(mockedPublish).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries when subscribers are absent and completes after recovery", async () => {
+    const idempotencyKey = `no-subscriber-${randomUUID()}`;
+    await enqueueJob(
+      organizationId,
+      "task_event",
+      { type: "task.updated", projectId: 1, taskId: 1, version: 2 },
+      idempotencyKey
+    );
+    const stored = await pool.query(
+      "SELECT id FROM background_jobs WHERE idempotency_key = $1",
+      [idempotencyKey]
+    );
+    mockedPublish.mockRejectedValueOnce(
+      new Error("No task-event subscribers are available")
+    );
+    const errorLog = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    try {
+      await processPendingJobs();
+      expect(errorLog).toHaveBeenCalledWith(
+        JSON.stringify({
+          level: "error",
+          event: "background_job_attempt_failed",
+          jobId: String(stored.rows[0].id),
+          jobType: "task_event",
+          attempt: 1,
+          maxAttempts: 3,
+          errorType: "Error",
+        })
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+
+    const pending = await pool.query(
+      `SELECT status, attempts, last_error, locked_at
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    expect(pending.rows[0]).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      last_error: "No task-event subscribers are available",
+      locked_at: null,
+    });
+    const pendingCursor = await pool.query(
+      `SELECT (id - 1)::text AS value
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    const pendingReplay = await loadTaskEventReplayPage(
+      organizationId,
+      pendingCursor.rows[0].value
+    );
+    expect(pendingReplay.events).toContainEqual(
+      expect.objectContaining({
+        eventId: `background-job:${stored.rows[0].id}`,
+        type: "task.updated",
+        taskId: 1,
+        version: 2,
+      })
+    );
+
+    await pool.query(
+      `UPDATE background_jobs
+       SET run_at = CURRENT_TIMESTAMP
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    await processPendingJobs();
+
+    const completed = await pool.query(
+      `SELECT status
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    expect(completed.rows[0].status).toBe("completed");
+    expect(mockedPublish).toHaveBeenCalledTimes(2);
+    expect(mockedPublish.mock.calls[0][0].eventId).toBe(
+      `background-job:${stored.rows[0].id}`
+    );
+    expect(mockedPublish.mock.calls[1][0].eventId).toBe(
+      mockedPublish.mock.calls[0][0].eventId
+    );
+
+    const cursor = await pool.query(
+      `SELECT id, (id - 1)::text AS value
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    const replay = await loadTaskEventReplayPage(
+      organizationId,
+      cursor.rows[0].value
+    );
+    expect(replay.events).toContainEqual(
+      expect.objectContaining({
+        eventId: `background-job:${stored.rows[0].id}`,
+        type: "task.updated",
+        taskId: 1,
+        version: 2,
+      })
+    );
+  });
+
+  test("reclaims an abandoned processing job after a worker restart", async () => {
+    const idempotencyKey = `worker-restart-${randomUUID()}`;
+    await enqueueJob(
+      organizationId,
+      "task_event",
+      { type: "task.created", projectId: 1, taskId: 1 },
+      idempotencyKey
+    );
+    const stored = await pool.query(
+      "SELECT id FROM background_jobs WHERE idempotency_key = $1",
+      [idempotencyKey]
+    );
+    await pool.query(
+      `UPDATE background_jobs
+       SET status = 'processing',
+           attempts = 1,
+           locked_at = CURRENT_TIMESTAMP - INTERVAL '6 minutes'
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+
+    await processPendingJobs();
+
+    const recovered = await pool.query(
+      `SELECT status, attempts, locked_at
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    expect(recovered.rows[0]).toMatchObject({
+      status: "completed",
+      attempts: 2,
+      locked_at: null,
+    });
+    expect(mockedPublish).toHaveBeenCalledTimes(1);
+    expect(mockedPublish.mock.calls[0][0].eventId).toBe(
+      `background-job:${stored.rows[0].id}`
+    );
   });
 
   test("reuses the same event ID when a published job is delivered again", async () => {
@@ -188,7 +346,14 @@ describe("Background job retries", () => {
       [idempotencyKey]
     );
 
-    await processPendingJobs();
+    const errorLog = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      await processPendingJobs();
+    } finally {
+      errorLog.mockRestore();
+    }
 
     const result = await pool.query(
       `SELECT status, attempts, max_attempts, locked_at, last_error
@@ -206,5 +371,23 @@ describe("Background job retries", () => {
       last_error: "Simulated publish failure",
     });
     expect(mockedPublish).toHaveBeenCalledTimes(1);
+
+    const cursor = await pool.query(
+      `SELECT id, (id - 1)::text AS value
+       FROM background_jobs
+       WHERE idempotency_key = $1`,
+      [idempotencyKey]
+    );
+    const replay = await loadTaskEventReplayPage(
+      organizationId,
+      cursor.rows[0].value
+    );
+    expect(replay.events).toContainEqual(
+      expect.objectContaining({
+        eventId: `background-job:${cursor.rows[0].id}`,
+        type: "task.created",
+        taskId: 1,
+      })
+    );
   });
 });

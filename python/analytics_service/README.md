@@ -140,9 +140,11 @@ python -m unittest discover -s python/analytics\_service/tests -v
 
 
 
-\## Security
+## Security
 
-The API only allows filenames from the configured samples directory. Absolute paths and directory traversal attempts are rejected.
+- **Authentication:** All analytics report endpoints (`POST /analytics/productivity`, `POST /analytics/overdue`) require a valid Bearer JWT access token issued by the Node API (`Authorization: Bearer <token>`). Tokens are verified with the shared `JWT_SECRET` using HS256. Missing or invalid tokens receive HTTP 401.
+- **Report data scope:** Analytics records must have an integer `organization_id` equal to the verified Node JWT organization claim; unscoped and cross-organization records are excluded. Bundled records are synthetic and assigned to demo organization `7`, so other organizations receive empty reports unless their own explicitly scoped sample records are supplied. The `/health` endpoint remains unauthenticated for load-balancer health checks.
+- **Path safety:** The API only allows filenames from the configured samples directory. Absolute paths and directory traversal attempts are rejected.
 
 
 
@@ -158,7 +160,7 @@ The productivity and overdue-task report operations accept one-based `page` and 
 
 The API enforces a per-client-IP fixed-window limit, configurable with `API_RATE_LIMIT_MAX_REQUESTS` and `API_RATE_LIMIT_WINDOW_SECONDS` (defaults: 100 requests per 900 seconds). Allowed API responses include `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `RateLimit-Policy`; over-limit responses return HTTP 429 and `Retry-After`. Limits are held in memory per process and are not shared across replicas. Documentation routes are excluded. The service uses the direct ASGI client address and does not interpret forwarded headers.
 
-The analytics API does not currently authenticate users. It accepts report requests only for files under the configured samples directory and rejects unsafe paths. See `docs/ASSESSMENT_13.md` for the setup, complete contract details, and validation evidence.
+The analytics API authenticates all report requests with a JWT and scopes them to the caller's organization. It accepts report requests only for files under the configured samples directory and rejects unsafe paths. See `docs/ASSESSMENT_13.md` for the setup, complete contract details, and validation evidence.
 
 
 

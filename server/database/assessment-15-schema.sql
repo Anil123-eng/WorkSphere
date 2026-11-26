@@ -19,12 +19,13 @@ CREATE TABLE IF NOT EXISTS task_activities (
     previous_state JSONB,
     new_state JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_task_activities_task_org
-        FOREIGN KEY (task_id, organization_id)
-        REFERENCES tasks(id, organization_id) ON DELETE CASCADE,
     CONSTRAINT uq_task_activities_task_version
         UNIQUE (task_id, task_version)
 );
+
+-- Activity rows are historical records and must outlive deleted tasks/projects.
+ALTER TABLE task_activities
+    DROP CONSTRAINT IF EXISTS fk_task_activities_task_org;
 
 CREATE INDEX IF NOT EXISTS idx_task_activities_org_task_version
 ON task_activities(organization_id, task_id, task_version);

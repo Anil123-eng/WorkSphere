@@ -3,8 +3,27 @@ import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db";
 import { authenticateToken } from "../middleware/authMiddleware";
 import { authorizeRoles } from "../middleware/roleMiddleware";
+import {
+  createPaginationMetadata,
+  parsePagination,
+} from "../utils/pagination";
 
 const router = Router();
+
+// Explicit task status transition rules. A task may only move between the
+// listed statuses. Transitions not listed here are rejected with 409 so that
+// the lifecycle is auditable and cannot drift into an unsupported state.
+const TASK_STATUS_TRANSITIONS: Record<string, string[]> = {
+  todo: ["in_progress", "completed"],
+  in_progress: ["todo", "completed"],
+  completed: ["in_progress", "todo"],
+};
+
+const TASK_STATUSES = Object.keys(TASK_STATUS_TRANSITIONS);
+
+function isAllowedTransition(from: string, to: string): boolean {
+  return TASK_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+}
 
 router.use(authenticateToken);
 
@@ -131,15 +150,25 @@ router.get(
       return;
     }
 
+    const pagination = parsePagination(req.query.page, req.query.limit);
+    if (!pagination.success) {
+      res.status(400).json({
+        success: false,
+        message: pagination.message,
+      });
+      return;
+    }
+
     try {
-      const task = await pool.query(
-        `SELECT id
-         FROM tasks
-         WHERE id = $1 AND organization_id = $2`,
+      const countResult = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM task_activities
+         WHERE task_id = $1 AND organization_id = $2`,
         [id, organizationId]
       );
+      const total = Number(countResult.rows[0].total);
 
-      if (task.rows.length === 0) {
+      if (total === 0) {
         res.status(404).json({
           success: false,
           message: "Task not found",
@@ -152,13 +181,62 @@ router.get(
                 task_version, previous_state, new_state, created_at
          FROM task_activities
          WHERE task_id = $1 AND organization_id = $2
-         ORDER BY task_version`,
-        [id, organizationId]
+         ORDER BY task_version
+         LIMIT $3 OFFSET $4`,
+        [
+          id,
+          organizationId,
+          pagination.pagination.limit,
+          pagination.pagination.offset,
+        ]
       );
 
       res.status(200).json({
         success: true,
         data: activities.rows,
+        pagination: createPaginationMetadata(
+          pagination.pagination.page,
+          pagination.pagination.limit,
+          total
+        ),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  "/:id",
+  async (req: Request, res: Response, next: NextFunction) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid task ID",
+      });
+      return;
+    }
+
+    try {
+      const result = await pool.query(
+        `SELECT *
+         FROM tasks
+         WHERE id = $1 AND organization_id = $2`,
+        [id, req.user!.organizationId]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: "Task not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: result.rows[0],
       });
     } catch (error) {
       next(error);
@@ -178,7 +256,7 @@ router.patch(
       const organizationId = req.user!.organizationId;
       const userId = req.user!.userId;
 
-      const allowedStatuses = ["todo", "in_progress", "completed"];
+      const allowedStatuses = TASK_STATUSES;
 
       if (!Number.isInteger(id) || id <= 0) {
         res.status(400).json({
@@ -188,7 +266,7 @@ router.patch(
         return;
       }
 
-      if (!allowedStatuses.includes(status)) {
+      if (typeof status !== "string" || !allowedStatuses.includes(status)) {
         res.status(400).json({
           success: false,
           message: "Invalid task status",
@@ -241,6 +319,30 @@ router.patch(
           success: false,
           message: "Task was updated by another user. Refresh and retry.",
           currentVersion: currentTask.version,
+          data: currentTask,
+        });
+        return;
+      }
+
+      // No-op transition: keep the current status without bumping version.
+      if (currentTask.status === status) {
+        await client.query("ROLLBACK");
+        res.status(200).json({
+          success: true,
+          message: "Task status unchanged",
+          data: currentTask,
+        });
+        return;
+      }
+
+      if (!isAllowedTransition(currentTask.status, status)) {
+        await client.query("ROLLBACK");
+
+        res.status(409).json({
+          success: false,
+          message: `Invalid status transition from ${currentTask.status} to ${status}`,
+          currentStatus: currentTask.status,
+          allowedTransitions: TASK_STATUS_TRANSITIONS[currentTask.status],
           data: currentTask,
         });
         return;

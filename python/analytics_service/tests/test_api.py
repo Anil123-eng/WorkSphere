@@ -1,9 +1,15 @@
+import os
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import jwt
 from fastapi.testclient import TestClient
+
+# The analytics service verifies JWTs with the same secret as the Node API.
+# Set a predictable secret before importing main so tests can issue tokens.
+os.environ.setdefault("JWT_SECRET", "test-analytics-secret-0123456789abcdef")
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVICE_DIR))
@@ -13,6 +19,22 @@ from main import app
 from rate_limit import FixedWindowRateLimiter
 
 client = TestClient(app)
+
+TEST_USER_ID = 101
+TEST_ORGANIZATION_ID = 7
+
+
+def make_token(user_id=TEST_USER_ID, organization_id=TEST_ORGANIZATION_ID, role="owner"):
+    payload = {
+        "userId": user_id,
+        "organizationId": organization_id,
+        "role": role,
+    }
+    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+
+
+def auth_headers(token=None):
+    return {"Authorization": f"Bearer {token or make_token()}"}
 
 
 class TestAnalyticsAPI(unittest.TestCase):
@@ -40,7 +62,7 @@ class TestAnalyticsAPI(unittest.TestCase):
         self.assertIn("429", productivity["responses"])
         self.assertEqual(
             {parameter["name"] for parameter in productivity["parameters"]},
-            {"page", "limit"},
+            {"authorization", "page", "limit"},
         )
 
     def test_swagger_ui_is_available(self):
@@ -63,6 +85,7 @@ class TestAnalyticsAPI(unittest.TestCase):
         response = client.post(
             "/analytics/productivity",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(response.status_code, 200)
@@ -74,10 +97,12 @@ class TestAnalyticsAPI(unittest.TestCase):
         first_page = client.post(
             "/v1/analytics/productivity?page=1&limit=2",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
         second_page = client.post(
             "/v1/analytics/productivity?page=2&limit=2",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(first_page.status_code, 200)
@@ -98,14 +123,17 @@ class TestAnalyticsAPI(unittest.TestCase):
         invalid_page = client.post(
             "/analytics/productivity?page=0",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
         invalid_limit = client.post(
             "/analytics/productivity?limit=101",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
         out_of_range = client.post(
             "/analytics/productivity?page=99&limit=2",
             json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(invalid_page.status_code, 422)
@@ -121,16 +149,41 @@ class TestAnalyticsAPI(unittest.TestCase):
                 "tasks_file": "tasks.json",
                 "current_date": "2026-11-25",
             },
+            headers=auth_headers(),
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["pagination"]["total"], 1)
 
+    def test_analytics_reports_only_include_the_authenticated_organization(self):
+        other_organization_headers = auth_headers(
+            make_token(organization_id=TEST_ORGANIZATION_ID + 1)
+        )
+
+        productivity = client.post(
+            "/analytics/productivity",
+            json={"activities_file": "activities.jsonl"},
+            headers=other_organization_headers,
+        )
+        overdue = client.post(
+            "/analytics/overdue",
+            json={"tasks_file": "tasks.json", "current_date": "2026-11-25"},
+            headers=other_organization_headers,
+        )
+
+        self.assertEqual(productivity.status_code, 200)
+        self.assertEqual(productivity.json()["users"], {})
+        self.assertEqual(productivity.json()["user_count"], 0)
+        self.assertEqual(overdue.status_code, 200)
+        self.assertEqual(overdue.json()["overdue_tasks"], [])
+        self.assertEqual(overdue.json()["count"], 0)
+
     def test_missing_activities_file(self):
         response = client.post(
             "/analytics/productivity",
             json={"activities_file": "missing.jsonl"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(response.status_code, 404)
@@ -139,6 +192,7 @@ class TestAnalyticsAPI(unittest.TestCase):
         response = client.post(
             "/analytics/overdue",
             json={"tasks_file": "missing.json"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(response.status_code, 404)
@@ -147,9 +201,38 @@ class TestAnalyticsAPI(unittest.TestCase):
         response = client.post(
             "/analytics/productivity",
             json={"activities_file": "../tasks.json"},
+            headers=auth_headers(),
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_analytics_rejects_missing_authentication(self):
+        response = client.post(
+            "/analytics/productivity",
+            json={"activities_file": "activities.jsonl"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_analytics_rejects_invalid_token(self):
+        response = client.post(
+            "/analytics/productivity",
+            json={"activities_file": "activities.jsonl"},
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_analytics_rejects_token_without_node_organization_claim(self):
+        token = jwt.encode(
+            {"userId": TEST_USER_ID, "organization_id": TEST_ORGANIZATION_ID},
+            os.environ["JWT_SECRET"],
+            algorithm="HS256",
+        )
+        response = client.post(
+            "/analytics/productivity",
+            json={"activities_file": "activities.jsonl"},
+            headers=auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 401)
 
     def test_rate_limit_returns_429_headers_and_recovers_after_window(self):
         current_time = [1000.0]

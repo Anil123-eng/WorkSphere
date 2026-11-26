@@ -10,8 +10,33 @@ import {
   generateTokenFamilyId,
   hashRefreshToken,
 } from "../utils/tokenUtils";
+import { authenticateToken } from "../middleware/authMiddleware";
 
 const router = Router();
+
+router.get(
+  "/session",
+  authenticateToken,
+  (req: Request, res: Response): void => {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        userId: user.userId,
+        organizationId: user.organizationId,
+        role: user.role,
+      },
+    });
+  }
+);
 
 interface OrganizationMembership {
   organization_id: number | string;
@@ -156,7 +181,10 @@ router.post(
         return;
       }
 
-      console.error("Registration error:", error);
+      console.error(
+        "Registration error:",
+        error instanceof Error ? error.message : "Unknown error",
+      );
 
       res.status(500).json({
         success: false,
@@ -339,7 +367,10 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("Login error:", error);
+      console.error(
+        "Login error:",
+        error instanceof Error ? error.message : "Unknown error",
+      );
 
       res.status(500).json({
         success: false,
@@ -524,7 +555,10 @@ router.post(
     } catch (error) {
       await client.query("ROLLBACK");
 
-      console.error("Token refresh error:", error);
+      console.error(
+        "Token refresh error:",
+        error instanceof Error ? error.message : "Unknown error",
+      );
 
       res.status(500).json({
         success: false,
@@ -580,7 +614,10 @@ router.post(
         message: "Logout successful",
       });
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error(
+        "Logout error:",
+        error instanceof Error ? error.message : "Unknown error",
+      );
 
       res.status(500).json({
         success: false,

@@ -123,6 +123,18 @@ async function handleJob(job: BackgroundJob): Promise<void> {
     const message =
       error instanceof Error ? error.message : "Unknown job error";
 
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "background_job_attempt_failed",
+        jobId: String(job.id),
+        jobType: job.job_type,
+        attempt: job.attempts,
+        maxAttempts: job.max_attempts,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      })
+    );
+
     if (job.attempts >= job.max_attempts) {
       await pool.query(
         `UPDATE background_jobs

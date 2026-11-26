@@ -1,5 +1,11 @@
 
+"use client";
+
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ApiError, revokeSession } from "@/lib/api";
+import { clearStoredSession } from "@/lib/auth";
 
 const roles = [
   { name: "Platform Administrator", path: "/platform-admin" },
@@ -10,15 +16,52 @@ const roles = [
 
 export default function WorkspaceLayout({
   role,
+  children,
 }: {
   role: string;
+  children?: ReactNode;
 }) {
+  const router = useRouter();
+  const [logoutError, setLogoutError] = useState("");
+
+  async function handleLogout() {
+    setLogoutError("");
+    const refreshToken = localStorage.getItem("refreshToken");
+
+    if (refreshToken) {
+      try {
+        await revokeSession(refreshToken);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearStoredSession();
+          router.replace("/login");
+          return;
+        }
+
+        setLogoutError(
+          error instanceof Error ? error.message : "Unable to log out"
+        );
+        return;
+      }
+    }
+
+    clearStoredSession();
+    router.replace("/login");
+  }
+
   return (
     <main className="min-h-screen bg-gray-100">
       <header className="bg-white p-5 shadow-sm">
-        <h1 className="text-2xl font-bold text-blue-700">
-          WorkSphere
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold text-blue-700">WorkSphere</h1>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+          >
+            Sign out
+          </button>
+        </div>
 
         <nav
           aria-label="Role navigation"
@@ -46,6 +89,11 @@ export default function WorkspaceLayout({
             );
           })}
         </nav>
+        {logoutError && (
+          <p className="mt-3 text-sm text-red-600" role="alert">
+            {logoutError}
+          </p>
+        )}
       </header>
 
       <section className="p-6">
@@ -56,6 +104,7 @@ export default function WorkspaceLayout({
         <p className="mt-2 text-gray-600">
           Welcome to your WorkSphere workspace.
         </p>
+        {children}
       </section>
     </main>
   );

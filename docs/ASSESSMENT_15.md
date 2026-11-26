@@ -53,20 +53,20 @@ Each activity stores the actor, task version, timestamp, and complete task snaps
 ## Idempotency and recovery behavior
 
 - The outbox key for a task update is `task.updated:<task-id>:<version>`. Repeating an enqueue for that version cannot create a second job.
-- The worker uses the durable job ID as the event ID. Redis runs `SET ... NX` and `PUBLISH` in one Lua operation, with a seven-day deduplication marker. A retry after publishing but before acknowledging the job does not publish the same event twice during that window.
+- The worker uses the durable job ID as the event ID. Redis atomically checks the deduplication key, publishes, and sets a seven-day marker only when at least one Redis subscriber is present. A retry with an existing marker is suppressed while Redis retains it.
 - Redis failures propagate to the existing worker retry/backoff path. The queued job remains in PostgreSQL.
-- SSE includes the event ID in both the `id:` field and event data.
-- Pub/Sub does not replay messages to disconnected clients. The activity API is the durable recovery path; Redis delivery is not represented as a durable notification log.
+- SSE includes the event ID in its `id:` field. On reconnect with `Last-Event-ID`, the API can replay task-event rows from PostgreSQL, including queued jobs that have not yet been published.
+- Pub/Sub still has no consumer acknowledgement. The SSE replay is a recovery path, not a notification platform or an exactly-once guarantee; clients must deduplicate repeated event IDs. Redis loss can also clear its seven-day dedupe markers.
 
 ## Local setup
 
 Use an isolated local/test PostgreSQL database and synthetic accounts only. Do not point these commands at production.
 
 1. Install the existing Node dependencies with `npm ci`.
-2. On a new local Compose database, `docker/postgres/init/05-assessment-15.sql` is applied by the existing init-directory mount. For a new standalone local/test database, `node create-db.cjs` initializes the core schemas through Assessment 15. For an existing local/test database, set `DATABASE_URL` to that isolated database and apply the additive migration from the repository root:
+2. On a new local Compose database, the scripts in `docker/postgres/init` are applied by the init-directory mount. For a new standalone local/test database, `node create-db.cjs` initializes the core schemas through Assessment 15. For an existing local/test database, set `DATABASE_URL` to that isolated database, configure a URL-safe `WORKSPHERE_APP_PASSWORD`, then run the versioned migrations:
 
    ```powershell
-   psql "$env:DATABASE_URL" -f server/database/assessment-15-schema.sql
+   node server/migrate.cjs
    ```
 
 3. Configure the local test `JWT_SECRET` as the application setup requires. Run the tests from the repository root:
@@ -75,7 +75,7 @@ Use an isolated local/test PostgreSQL database and synthetic accounts only. Do n
    npm test -- --runInBand
    ```
 
-The migration adds `tasks.version`, creates `task_activities`, and backfills one baseline snapshot per existing task. It is idempotent and does not change application secrets or deployment settings.
+The versioned migrations add `tasks.version`, create `task_activities`, backfill one baseline snapshot per existing task, add the app role, and add query-pattern indexes. The activity-history migration is transactional and idempotent. Never point the local migration command at a production or remote database as part of this assessment.
 
 ## Injected incident scenarios and root-cause analysis
 
@@ -153,3 +153,63 @@ Task concurrency, activity history, job state, and tenant isolation use real tra
 - If a real provider drill is required, use a Resend sandbox/test setup with controlled recipients only. This execution used a mock and contacted no email provider.
 
 No live incident, manual service outage, production drill, deployment, commit, or push is claimed.
+
+## Follow-up verification - 2026-11-26
+
+The latest verification used a new PostgreSQL 16 container bound to
+`127.0.0.1:55432`, with an in-memory container data directory. It did not use
+the running Compose database, any hosted database, or an external service.
+
+| Check | Result |
+|---|---|
+| `npm test -- --runInBand` | Passed: 16 suites, 74 tests |
+| Focused frontend auth, registration, and workspace protection tests | Passed: 4 suites, 12 tests |
+| Analytics `unittest` discovery | Passed: 14 tests |
+| Processor `unittest` discovery | Passed: 9 tests |
+| `npx tsc --noEmit` | Passed |
+| `npm run build` | Passed |
+| Targeted ESLint on changed Section 7/8 files | Passed |
+| Full `npm run lint` | Failed on 3 `no-require-imports` errors in the pre-existing untracked `server/tmp-test-backup-restore.js`; that file was preserved, not modified, or executed |
+| `docker compose config --quiet` | Passed; configuration only, no services started |
+| Versioned migrations on a simulated prior schema | Passed: 3 applied, then 3 skipped on rerun |
+| Task/project history retention after migration | Passed: 2 preexisting synthetic records survived task and project deletion with organization IDs retained; the other-tenant query returned 0 |
+| PostgreSQL init role script | Passed against a fresh database in the disposable container |
+| Local helper backup and restore | Passed against the disposable database; activity/job/organization counts matched (`2:0:2`) |
+| `git diff --check` | Passed |
+
+The test container and its temporary backup were removed after verification.
+These results establish local implementation and automated-test behavior only;
+they do not establish production delivery, exactly-once events, or a manual
+Redis outage drill. The manual screenshots/recording listed above remain
+submission evidence to capture.
+
+## Follow-up verification: task UI and analytics - 2026-11-26
+
+The authenticated owner/project-manager workspaces include a limited task
+concurrency and activity-history demonstration. `e2e/task-demo.spec.ts`
+exercises the two-tab stale-version UI using a mocked API; it is not evidence
+of a live API transaction. The database-backed task tests remain the evidence
+for server-side concurrency, history, rollback, and tenant isolation. The UI
+does not implement a general task editor or consume task-event SSE.
+
+Analytics report data is filtered by the integer organization claim in the
+verified JWT. Bundled records are synthetic and scoped to organization `7`;
+records without a matching organization are excluded. API tests cover a token
+for another organization receiving empty productivity and overdue reports.
+
+An in-memory synthetic benchmark compared a 100,000-task full JSON load with
+streaming overdue pagination. Both paths returned identical page contents and
+the same 34,286 overdue tasks. In this single run the full-load baseline took
+0.719 seconds and peaked at 48.48 MiB of Python `tracemalloc` allocations; the
+streaming page took 0.772 seconds and peaked at 0.50 MiB. This indicates
+substantially lower Python allocation peak with a small observed runtime
+increase for this workload; it is not a general production performance claim.
+`tracemalloc` does not measure total process RSS.
+
+The browser regression tests verify the landing-page login/register links,
+the task conflict/reload/history UI, keyboard activation, and a 375-pixel
+viewport. Their task APIs are mocked. The local frontend image was rebuilt
+and verified at `http://localhost:3000`; the API/database services were left
+untouched. The checked-in Compose file maps ports to loopback and contains no
+TLS-terminating proxy or certificate configuration; HTTPS was not tested
+against a deployed environment.

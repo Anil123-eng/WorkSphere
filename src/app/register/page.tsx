@@ -61,8 +61,11 @@ export default function RegisterPage() {
         </h1>
 
         <div>
-          <label className={labelClass}>Full Name</label>
+          <label htmlFor="register-name" className={labelClass}>
+            Full Name
+          </label>
           <input
+            id="register-name"
             type="text"
             required
             value={name}
@@ -73,8 +76,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelClass}>Email</label>
+          <label htmlFor="register-email" className={labelClass}>
+            Email
+          </label>
           <input
+            id="register-email"
             type="email"
             required
             value={email}
@@ -85,8 +91,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelClass}>Organization Name</label>
+          <label htmlFor="register-organization" className={labelClass}>
+            Organization Name
+          </label>
           <input
+            id="register-organization"
             type="text"
             required
             value={organizationName}
@@ -97,8 +106,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className={labelClass}>Password</label>
+          <label htmlFor="register-password" className={labelClass}>
+            Password
+          </label>
           <input
+            id="register-password"
             type="password"
             required
             minLength={8}
@@ -110,7 +122,12 @@ export default function RegisterPage() {
         </div>
 
         {error && (
-          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          <p
+            id="registration-error"
+            role="alert"
+            aria-live="polite"
+            className="rounded-lg bg-red-50 p-3 text-sm text-red-600"
+          >
             {error}
           </p>
         )}
@@ -118,6 +135,7 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={loading}
+          aria-busy={loading}
           className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Creating account..." : "Register"}

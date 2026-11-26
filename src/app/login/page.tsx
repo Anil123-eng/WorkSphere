@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/api";
+import { getRoleDestination } from "@/lib/auth";
 
 type LoginResponse = {
   success: boolean;
@@ -41,14 +42,7 @@ export default function LoginPage() {
       localStorage.setItem("user", JSON.stringify(result.data.user));
       localStorage.setItem("role", result.data.role);
 
-      const destinations: Record<string, string> = {
-        owner: "/organization-owner",
-        manager: "/project-manager",
-        member: "/team-member",
-        admin: "/platform-admin",
-      };
-
-      router.push(destinations[result.data.role] || "/");
+      router.push(getRoleDestination(result.data.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -72,8 +66,11 @@ export default function LoginPage() {
         </h1>
 
         <div>
-          <label className={labelClass}>Email</label>
+          <label htmlFor="login-email" className={labelClass}>
+            Email
+          </label>
           <input
+            id="login-email"
             type="email"
             required
             value={email}
@@ -84,8 +81,11 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className={labelClass}>Password</label>
+          <label htmlFor="login-password" className={labelClass}>
+            Password
+          </label>
           <input
+            id="login-password"
             type="password"
             required
             value={password}
@@ -96,7 +96,11 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          <p
+            role="alert"
+            className="rounded-lg bg-red-50 p-3 text-sm text-red-600"
+            aria-live="polite"
+          >
             {error}
           </p>
         )}
@@ -104,6 +108,8 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
+          aria-busy={loading}
+          aria-label={loading ? "Signing in, please wait" : "Login"}
           className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Signing in..." : "Login"}

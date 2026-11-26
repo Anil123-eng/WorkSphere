@@ -150,6 +150,53 @@
         }
       }
     },
+    "/api/auth/session": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Validate the current access-token session",
+        "description": "Returns the authenticated identity and current organization membership. The access token is checked by the API; this endpoint does not replace authorization on business operations.",
+        "operationId": "getCurrentSession",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "The access token and organization membership are valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "data": {
+                      "type": "object",
+                      "required": ["userId", "organizationId", "role"],
+                      "properties": {
+                        "userId": { "type": "integer", "example": 41 },
+                        "organizationId": { "type": "integer", "example": 12 },
+                        "role": {
+                          "type": "string",
+                          "enum": ["owner", "project_manager", "team_member", "auditor"]
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "userId": 41,
+                    "organizationId": 12,
+                    "role": "owner"
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
     "/api/auth/refresh": {
       "post": {
         "tags": ["Authentication"],
@@ -466,6 +513,26 @@
           "example": 23
         }
       ],
+      "get": {
+        "tags": ["Tasks"],
+        "summary": "Get a task within the authenticated organization",
+        "operationId": "getTask",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "The organization-scoped task.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
       "patch": {
         "tags": ["Tasks"],
         "summary": "Update task status with optimistic concurrency",

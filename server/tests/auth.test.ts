@@ -112,6 +112,36 @@ describe("WorkSphere Authentication API", () => {
     expect(response.body.message).toBe("Invalid email or password");
   });
 
+  test("GET /api/auth/session - should reject unauthenticated requests", async () => {
+    const response = await request(app).get("/api/auth/session");
+
+    expect(response.status).toBe(401);
+    expect(response.body.success).toBe(false);
+  });
+
+  test("GET /api/auth/session - should return the verified membership", async () => {
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({
+        email: testEmail,
+        password: testPassword,
+      });
+
+    const response = await request(app)
+      .get("/api/auth/session")
+      .set("Authorization", `Bearer ${login.body.data.accessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        userId,
+        organizationId,
+        role: "owner",
+      },
+    });
+  });
+
   test("POST /api/auth/refresh - should rotate refresh tokens", async () => {
     const login = await request(app)
       .post("/api/auth/login")

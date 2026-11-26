@@ -1,12 +1,13 @@
 ﻿
 from datetime import date
 import math
+import os
 from pathlib import Path
 import sys
-import json
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+import jwt
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
@@ -17,6 +18,62 @@ from rate_limit import (
     RATE_LIMIT_WINDOW_SECONDS,
 )
 
+# JWT shared with the Node API. Must be set in deployed environments.
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET must be configured")
+
+
+async def get_current_organization(
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Authenticate the caller and validate the Node-issued identity claims.
+
+    The Node API issues HS256 JWT access tokens whose payload contains
+    `userId`, `email`, `organizationId`, and `role`. The bundled report
+    samples are shared synthetic data, not tenant-specific records.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token is required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = authorization.split(" ", 1)[1]
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if (
+        not isinstance(payload, dict)
+        or type(payload.get("organizationId")) is not int
+        or type(payload.get("userId")) is not int
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return {
+        "userId": int(payload["userId"]),
+        "organizationId": int(payload["organizationId"]),
+        "role": payload.get("role"),
+    }
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSOR_PATH = PROJECT_ROOT / "python" / "worksphere_processor"
 SAMPLES_DIR = PROCESSOR_PATH / "samples"
@@ -26,7 +83,9 @@ sys.path.insert(0, str(PROCESSOR_PATH))
 from processor import (
     stream_activities,
     calculate_productivity,
-    find_overdue_tasks,
+    stream_json_array,
+    filter_by_organization,
+    paginate_overdue_tasks,
 )
 
 app = FastAPI(
@@ -245,6 +304,7 @@ def health_check():
 )
 def productivity_report(
     request: ProductivityRequest,
+    current_user: dict = Depends(get_current_organization),
     page: int = Query(
         default=1,
         ge=1,
@@ -263,7 +323,10 @@ def productivity_report(
 
     try:
         results = calculate_productivity(
-            stream_activities(activities_path)
+            filter_by_organization(
+                stream_activities(activities_path),
+                current_user["organizationId"],
+            )
         )
         entries = sorted(results.items(), key=lambda item: str(item[0]))
         page_entries, pagination = paginate(entries, page, limit)
@@ -338,6 +401,7 @@ def productivity_report(
 )
 def overdue_report(
     request: OverdueRequest,
+    current_user: dict = Depends(get_current_organization),
     page: int = Query(
         default=1,
         ge=1,
@@ -355,21 +419,28 @@ def overdue_report(
     tasks_path = resolve_sample_file(request.tasks_file)
 
     try:
-        with tasks_path.open("r", encoding="utf-8-sig") as file:
-            tasks = json.load(file)
-
-        if not isinstance(tasks, list):
-            raise ValueError("Tasks file must contain a JSON array")
-
-        overdue = find_overdue_tasks(
-            iter(tasks),
+        page_items, total = paginate_overdue_tasks(
+            filter_by_organization(
+                stream_json_array(tasks_path),
+                current_user["organizationId"],
+            ),
             request.current_date.isoformat(),
+            page,
+            limit,
         )
 
-        page_items, pagination = paginate(overdue, page, limit)
+        total_pages = math.ceil(total / limit)
+        pagination = PaginationMetadata(
+            page=page,
+            limit=limit,
+            total=total,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_previous=page > 1,
+        )
         return {
             "overdue_tasks": page_items,
-            "count": len(overdue),
+            "count": total,
             "pagination": pagination,
         }
     except (ValueError, OSError) as error:

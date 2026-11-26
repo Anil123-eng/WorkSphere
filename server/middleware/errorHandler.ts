@@ -9,7 +9,17 @@ export function errorHandler(
 ) {
   void next;
 
-  console.error(err.message);
+  const correlationId = (
+    _req as Request & { correlationId?: string }
+  ).correlationId;
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "unhandled_request_error",
+      correlationId,
+      errorType: err instanceof Error ? err.name : "UnknownError",
+    })
+  );
 
   res.status(500).json({
     success: false,
