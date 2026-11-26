@@ -27,7 +27,11 @@ jest.mock("redis", () => {
       deliveredKeys.add(key);
       return 1;
     }),
-    publish: jest.fn(async (_channel: string, _message: string) => 1),
+    publish: jest.fn(async (_channel: string, _message: string) => {
+      void _channel;
+      void _message;
+      return 1;
+    }),
     quit: jest.fn(async () => "OK"),
   };
 
