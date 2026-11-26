@@ -117,6 +117,52 @@ describe("WorkSphere Assessment 08 Integrations", () => {
     expect(mockedSendEmail).toHaveBeenCalledTimes(1);
   });
 
+  test("POST /api/integrations/email - should return a safe error when delivery fails", async () => {
+    mockedSendEmail
+      .mockRejectedValueOnce(new Error("Simulated provider outage"))
+      .mockResolvedValueOnce({
+        id: "recovered-email-id",
+      } as Awaited<ReturnType<typeof sendEmail>>);
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    try {
+      const response = await request(app)
+        .post("/api/integrations/email")
+        .set(authenticatedRequest())
+        .send({
+          to: "recipient@example.com",
+          subject: "Test Notification",
+          html: "<p>Test</p>",
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({
+        success: false,
+        message: "Internal server error",
+      });
+      expect(JSON.stringify(response.body)).not.toContain(
+        "Simulated provider outage"
+      );
+
+      const recovered = await request(app)
+        .post("/api/integrations/email")
+        .set(authenticatedRequest())
+        .send({
+          to: "recipient@example.com",
+          subject: "Test Notification",
+          html: "<p>Test</p>",
+        });
+
+      expect(recovered.status).toBe(200);
+      expect(recovered.body.success).toBe(true);
+      expect(mockedSendEmail).toHaveBeenCalledTimes(2);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   test("POST /api/integrations/email - should reject invalid email data", async () => {
     const response = await request(app)
       .post("/api/integrations/email")

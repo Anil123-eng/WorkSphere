@@ -3,7 +3,7 @@ import { pool } from "../db";
 import { taskEvents, TaskEvent } from "./taskEvents";
 
 interface BackgroundJob {
-  id: number;
+  id: number | string;
   organization_id: number;
   job_type: string;
   payload: Record<string, unknown>;
@@ -81,12 +81,23 @@ async function processJob(job: BackgroundJob): Promise<void> {
     }
 
     const event: TaskEvent = {
+      eventId: `background-job:${job.id}`,
       type: payload.type,
       organizationId: Number(job.organization_id),
       projectId,
       taskId,
       timestamp: new Date().toISOString(),
+      ...(payload.version === undefined
+        ? {}
+        : { version: Number(payload.version) }),
     };
+
+    if (
+      event.version !== undefined &&
+      (!Number.isSafeInteger(event.version) || event.version < 1)
+    ) {
+      throw new Error("Invalid task event version");
+    }
 
     await taskEvents.publish(event);
     return;

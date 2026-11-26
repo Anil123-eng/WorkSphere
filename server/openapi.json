@@ -421,7 +421,7 @@
       "post": {
         "tags": ["Tasks"],
         "summary": "Create a task",
-        "description": "Requires owner, project_manager, or team_member role. Task creation and event-job insertion share a database transaction.",
+        "description": "Requires owner, project_manager, or team_member role. Task creation, the initial activity snapshot, and event-job insertion share a database transaction.",
         "operationId": "createTask",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
@@ -468,7 +468,8 @@
       ],
       "patch": {
         "tags": ["Tasks"],
-        "summary": "Update task status",
+        "summary": "Update task status with optimistic concurrency",
+        "description": "Send the version returned by task creation or the last update as expectedVersion. A stale version returns 409 and does not change the task or activity history.",
         "operationId": "updateTaskStatus",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
@@ -476,7 +477,7 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/TaskStatusRequest" },
-              "example": { "status": "completed" }
+              "example": { "status": "completed", "expectedVersion": 1 }
             }
           }
         },
@@ -492,6 +493,69 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": {
+            "description": "The task version is stale. The current task and version are returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskConflict" },
+                "example": {
+                  "success": false,
+                  "message": "Task was updated by another user. Refresh and retry.",
+                  "currentVersion": 2,
+                  "data": {
+                    "id": 23,
+                    "status": "in_progress",
+                    "version": 2
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "428": {
+            "description": "expectedVersion is required for task updates.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": {
+                  "success": false,
+                  "message": "expectedVersion is required"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/tasks/{id}/activities": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Positive task ID within the authenticated organization.",
+          "schema": { "type": "integer", "minimum": 1 },
+          "example": 23
+        }
+      ],
+      "get": {
+        "tags": ["Tasks"],
+        "summary": "Read task activity history",
+        "description": "Returns the versioned task snapshots visible to the authenticated organization.",
+        "operationId": "getTaskActivities",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped task activity history.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskActivitiesResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
@@ -510,7 +574,7 @@
             "content": {
               "text/event-stream": {
                 "schema": { "type": "string" },
-                "example": "event: connected\\ndata: {\"message\":\"Connected to task updates\"}\\n\\nevent: task.created\\ndata: {\"type\":\"task.created\",\"organizationId\":12,\"projectId\":8,\"taskId\":23,\"timestamp\":\"2026-01-15T10:00:00.000Z\"}\\n\\n"
+                "example": "event: connected\\ndata: {\"message\":\"Connected to task updates\"}\\n\\nid: background-job:87\\nevent: task.updated\\ndata: {\"eventId\":\"background-job:87\",\"type\":\"task.updated\",\"organizationId\":12,\"projectId\":8,\"taskId\":23,\"version\":2,\"timestamp\":\"2026-01-15T10:00:00.000Z\"}\\n\\n"
               }
             }
           },
@@ -936,9 +1000,10 @@
       },
       "TaskStatusRequest": {
         "type": "object",
-        "required": ["status"],
+        "required": ["status", "expectedVersion"],
         "properties": {
-          "status": { "type": "string", "enum": ["todo", "in_progress", "completed"] }
+          "status": { "type": "string", "enum": ["todo", "in_progress", "completed"] },
+          "expectedVersion": { "type": "integer", "minimum": 1, "description": "Version observed by the client before editing." }
         }
       },
       "Task": {
@@ -953,7 +1018,8 @@
           "due_date": { "type": "string", "format": "date", "nullable": true },
           "created_by": { "oneOf": [{ "type": "string" }, { "type": "integer" }], "nullable": true },
           "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "updated_at": { "type": "string", "format": "date-time" },
+          "version": { "type": "integer", "minimum": 1 }
         }
       },
       "TaskResponse": {
@@ -963,6 +1029,42 @@
           "success": { "type": "boolean" },
           "message": { "type": "string" },
           "data": { "$ref": "#/components/schemas/Task" }
+        }
+      },
+      "TaskConflict": {
+        "type": "object",
+        "required": ["success", "message", "currentVersion", "data"],
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "message": { "type": "string" },
+          "currentVersion": { "type": "integer", "minimum": 1 },
+          "data": { "$ref": "#/components/schemas/Task" }
+        }
+      },
+      "TaskActivity": {
+        "type": "object",
+        "required": ["id", "task_id", "organization_id", "activity_type", "task_version", "new_state", "created_at"],
+        "properties": {
+          "id": { "type": "integer" },
+          "task_id": { "type": "integer" },
+          "organization_id": { "type": "integer" },
+          "actor_user_id": { "type": "integer", "nullable": true },
+          "activity_type": { "type": "string", "enum": ["created", "status_updated", "baseline_snapshot"] },
+          "task_version": { "type": "integer", "minimum": 1 },
+          "previous_state": { "type": "object", "nullable": true },
+          "new_state": { "type": "object" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TaskActivitiesResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TaskActivity" }
+          }
         }
       },
       "EmailRequest": {

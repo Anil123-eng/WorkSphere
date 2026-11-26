@@ -3,14 +3,23 @@ import { EventEmitter } from "events";
 import { createClient } from "redis";
 
 export interface TaskEvent {
+  eventId?: string;
   type: "task.created" | "task.updated";
   organizationId: number;
   projectId: number;
   taskId: number;
   timestamp: string;
+  version?: number;
 }
 
 const REDIS_CHANNEL = "worksphere:task-events";
+const EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60;
+const PUBLISH_ONCE_SCRIPT = `
+if redis.call("SET", KEYS[1], "1", "NX", "EX", ARGV[1]) then
+  return redis.call("PUBLISH", ARGV[2], ARGV[3])
+end
+return 0
+`;
 
 class TaskEventService extends EventEmitter {
   private publisher: ReturnType<typeof createClient> | null = null;
@@ -35,10 +44,18 @@ class TaskEventService extends EventEmitter {
         await this.publisher.connect();
       }
 
-      await this.publisher.publish(
-        REDIS_CHANNEL,
-        JSON.stringify(event)
-      );
+      if (event.eventId) {
+        await this.publisher.eval(PUBLISH_ONCE_SCRIPT, {
+          keys: [`${REDIS_CHANNEL}:delivered:${event.eventId}`],
+          arguments: [
+            String(EVENT_DEDUPE_TTL_SECONDS),
+            REDIS_CHANNEL,
+            JSON.stringify(event),
+          ],
+        });
+      } else {
+        await this.publisher.publish(REDIS_CHANNEL, JSON.stringify(event));
+      }
     } else {
       // Preserve in-memory events for local development and tests.
       this.emit(`organization:${event.organizationId}`, event);
@@ -67,7 +84,11 @@ class TaskEventService extends EventEmitter {
             event.type !== "task.updated") ||
           !Number.isSafeInteger(event.organizationId) ||
           !Number.isSafeInteger(event.projectId) ||
-          !Number.isSafeInteger(event.taskId)
+          !Number.isSafeInteger(event.taskId) ||
+          (event.eventId !== undefined &&
+            (typeof event.eventId !== "string" || !event.eventId)) ||
+          (event.version !== undefined &&
+            (!Number.isSafeInteger(event.version) || event.version < 1))
         ) {
           console.error("Ignored invalid Redis task event");
           return;

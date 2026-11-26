@@ -24,6 +24,9 @@ router.get(
     const unsubscribe = taskEvents.subscribe(
       organizationId,
       (event) => {
+        if (event.eventId) {
+          res.write(`id: ${event.eventId}\n`);
+        }
         res.write(`event: ${event.type}\n`);
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }

@@ -29,6 +29,20 @@ describe("Node API documentation", () => {
       ])
     );
     expect(response.body.paths["/api/projects"].get.responses["429"]).toBeDefined();
+    expect(
+      response.body.paths["/api/v1/tasks/{id}"].patch.requestBody.content[
+        "application/json"
+      ].schema
+    ).toEqual({ $ref: "#/components/schemas/TaskStatusRequest" });
+    expect(
+      response.body.components.schemas.TaskStatusRequest.required
+    ).toEqual(["status", "expectedVersion"]);
+    expect(
+      response.body.paths["/api/v1/tasks/{id}"].patch.responses["409"]
+    ).toBeDefined();
+    expect(
+      response.body.paths["/api/v1/tasks/{id}/activities"].get
+    ).toBeDefined();
   });
 
   test("serves the interactive Swagger UI", async () => {
